@@ -1,0 +1,4 @@
+# Code owners for agent-skill-description-optimizer.
+# The owner is requested for review on every change (branch protection sets
+# 0 required approvals, so this is advisory routing, not a merge gate).
+* @netopsengineer

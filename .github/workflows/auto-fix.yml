@@ -1,0 +1,102 @@
+---
+name: Auto-fix
+
+# React to the Validate workflow FAILING on a bot/Dependabot PR and push mechanical
+# (non-LLM) fixes back. workflow_run runs in the base-repo context, so the App-token
+# secrets are available; the App-token push re-triggers Validate (GITHUB_TOKEN pushes
+# would not). Human PRs are never auto-mutated.
+on:
+  # zizmor: ignore[dangerous-triggers] workflow_run is required by design (react to
+  # Validate FAILING and re-trigger CI after the App-token push); it runs in the
+  # base-repo context and never checks out fork code at elevated privilege.
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-fix-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  auto-fix:
+    name: auto-fix
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920  # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Least privilege: only Contents write (checkout + push mechanical fixes).
+          permission-contents: write
+
+      - name: Check out the PR head branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Guard against auto-fix loops
+        id: guard
+        # Abort if the head commit is already an auto-fix commit — prevents an
+        # infinite fix -> fail -> fix cycle when fixers cannot green the checks.
+        run: |
+          msg="$(git log -1 --pretty=%s)"
+          if printf '%s' "$msg" | grep -q '^ci: 🤖 mechanical auto-fix'; then
+            echo "Head is already an auto-fix commit; skipping to avoid a loop." >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install uv
+        if: steps.guard.outputs.skip == 'false'
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          version: "0.11.28"
+
+      - name: Apply mechanical fixes
+        if: steps.guard.outputs.skip == 'false'
+        # Refresh the lockfile and run every autofix hook. prek's exit code is
+        # ignored: non-fixable failures (real pytest/pyright errors) leave the tree
+        # unchanged, so nothing is committed and the PR stays red for a human.
+        env:
+          UV_MALWARE_CHECK: "1"
+        run: |
+          uv lock
+          uv sync
+          uv run prek run --all-files || true
+
+      - name: Commit and push fixes if anything changed
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name 'optimizer-release-bot[bot]'
+            git config user.email 'optimizer-release-bot[bot]@users.noreply.github.com'
+            git add -A
+            git commit -m 'ci: 🤖 mechanical auto-fix'
+            git push "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_BRANCH}"
+          else
+            echo "No mechanical fixes to apply; leaving the PR unchanged." >&2
+          fi

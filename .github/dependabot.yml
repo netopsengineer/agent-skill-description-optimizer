@@ -1,0 +1,70 @@
+---
+# Dependabot configuration — three ecosystems, one grouped PR each.
+# Auto-merge (dependabot-auto-merge.yml) squash-merges these once the
+# Validate gate is green; auto-fix.yml mechanically repairs lint-only failures.
+# Non-releasing commit prefixes (chore/ci) so a merged bump never cuts a release.
+version: 2
+
+updates:
+  # Python dev-group tools + the prek runner (PEP 735 [dependency-groups] dev).
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      python-dev:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "dependencies"
+      - "uv"
+    open-pull-requests-limit: 10
+
+  # .pre-commit-config.yaml hook revisions (SHA + `# frozen:` comment).
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      pre-commit:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "dependencies"
+      - "pre-commit"
+    open-pull-requests-limit: 10
+
+  # GitHub Actions `uses:` pins (SHA + `# vX.Y.Z` comment) in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    open-pull-requests-limit: 10

@@ -1,0 +1,133 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/pre-commit-config.json
+
+# For pre-commit, install hooks: `pre-commit install`
+
+# Using prek instead of pre-commit? Install hooks: `prek install -f`
+
+# Set the project's default language versions for hooks that require a specific language version.
+default_language_version:
+  python: python3.14
+
+# Whether to stop running hooks after a first failure
+fail_fast: false
+
+# exclude: Exclude files from being checked
+# use pipes to exclude multiple files or directories
+exclude: |
+  (?x)^(
+    .venv/.*|
+    .vscode/.*|
+    .gitignore|
+    .dockerignore|
+    Taskfile.yml|
+    justfile|
+  )$
+
+repos:
+  # -- General file hygiene ----------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+      - id: pretty-format-json
+        args: ["--autofix", "--no-sort-keys"]
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+        args: ["--unsafe"]
+      - id: check-ast
+
+  # Useful if you have hooks with `additional_dependencies` that need to be kept up to date.
+  - repo: https://github.com/pre-commit/sync-pre-commit-deps
+    rev: 0860f48ea6ee50a41d103560604044a7396d92b2 # frozen: v0.0.4
+    hooks:
+      - id: sync-pre-commit-deps
+
+  # -- Prose related hooks -----------------------------------------------
+
+  # requires npx which is available with nodejs
+  - repo: local
+    hooks:
+      - id: markdown-table-formatter
+        name: markdown-table-formatter
+        language: system
+        entry: npx -y markdown-table-formatter
+        types: [markdown]
+
+  # requires .markdownlint-cli2.jsonc at the root of the repository
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: 534166213006ec869b773b7ed8c6ebeaad1165d0 # frozen: v0.23.0
+    hooks:
+      - id: markdownlint-cli2
+        args: ["--config", ".markdownlint-cli2.jsonc", "--fix"]
+        require_serial: true
+
+  # -- Python related hooks ----------------------------------------------
+  - repo: https://github.com/asottile/pyupgrade
+    rev: 75992aaa40730136014f34227e0135f63fc951b4 # frozen: v3.21.2
+    hooks:
+      - id: pyupgrade
+        args: ["--py314-plus"]  # Set your project's minimum Python version to upgrade syntax accordingly
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06 # frozen: v0.15.21
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        args: ["--fix", "--show-fixes"]
+      # Run the formatter.
+      - id: ruff-format
+
+  - repo: https://github.com/jsh9/pydoclint
+    rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1 # frozen: v0.9.1
+    hooks:
+      - id: pydoclint
+        args: ["--config", "pyproject.toml"]
+
+  # -- TYPE CHECKER: choose exactly one of the two blocks below ----------
+
+  # Vanilla pyright, without any of the basedpyright extensions.
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: 392b6ba8e54be6d603e02e9f8d601d27b7a48d12 # frozen: v1.1.411
+    hooks:
+      - id: pyright
+        pass_filenames: false
+
+  # -- Tests -------------------------------------------------------------
+  # Full test suite as a gate hook so `prek run` (and CI's single gate job)
+  # covers pytest alongside lint/type/security. system language = uses the
+  # project's own uv environment.
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        language: system
+        entry: uv run pytest
+        pass_filenames: false
+        always_run: true
+
+  # -- Security related hooks --------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # frozen: v8.30.1
+    hooks:
+      - id: gitleaks
+        # args: ["--config", ".gitleaks.toml"]  # Optional: specify a custom configuration file with exclusions
+
+  # -- GitHub Actions workflow security ----------------------------------
+  # actionlint (language: golang) and zizmor (language: python) make the
+  # single `prek` gate cover workflow linting + security too. prek manages
+  # the Go and Python toolchains these hooks need.
+  - repo: https://github.com/rhysd/actionlint
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca # frozen: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: 64a97fb7fa63188393d3215c6e312f5f9c6d0f78 # frozen: v1.27.0
+    hooks:
+      - id: zizmor
