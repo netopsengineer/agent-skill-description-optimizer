@@ -3,18 +3,20 @@ name: Auto-fix
 
 # Privileged half of the Dependabot auto-fix flow. React to the Validate workflow
 # FAILING on a Dependabot PR and push the mechanical fixes that Validate's
-# unprivileged `autofix-patch` job already computed. This job only APPLIES a
-# pre-computed patch (data) and pushes it — it never runs uv/prek or any other PR
-# code, and it never checks out the untrusted ref with actions/checkout, so no
-# untrusted code executes in this privileged, write-credentialled context.
-# workflow_run runs in the base-repo context, so the App-token secrets are
-# available; the App-token push re-triggers Validate (GITHUB_TOKEN pushes would
-# not). Human PRs are never auto-mutated.
+# unprivileged `autofix-patch` job already computed. This job consumes that fix
+# set as DATA and rebuilds the commit through the Git Data API: it never checks
+# out, fetches, or executes the PR's code (no actions/checkout of the untrusted
+# ref, no git fetch/checkout of its SHA, no uv/prek), so no untrusted code runs in
+# this privileged, write-credentialled context. workflow_run runs in the base-repo
+# context, so the App-token secrets are available; the App-token ref update
+# re-triggers Validate (GITHUB_TOKEN pushes would not). Human PRs are never
+# auto-mutated.
 on:
   # zizmor: ignore[dangerous-triggers] workflow_run is required by design (react to
-  # Validate FAILING and re-trigger CI after the App-token push); it runs in the
-  # base-repo context. The PR head is materialised via raw git and only patched,
-  # never executed, so no untrusted code runs at elevated privilege.
+  # Validate FAILING and re-trigger CI after the App-token ref update); it runs in
+  # the base-repo context. The PR head is referenced only as a Git Data API
+  # parameter (base tree + parent) — never checked out, fetched, or executed — so
+  # no untrusted code runs at elevated privilege.
   workflow_run:
     workflows: [Validate]
     types: [completed]
@@ -58,22 +60,22 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download the mechanical-fix patch
+      - name: Download the fix set
         id: download
         if: steps.guard.outputs.skip == 'false'
-        # Missing artifact (no fixable changes, or a real red PR) is the normal
-        # no-op case, not an error — fall through and let later steps skip.
+        # Missing artifact (no fixable changes, or a genuinely red PR) is the
+        # normal no-op case, not an error — fall through and let later steps skip.
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: autofix-patch
+          name: autofix-fixes
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
-          path: patch
+          path: fixes
 
       - name: Mint a GitHub App token
         id: app-token
-        # Only mint a write-capable token once we actually have a patch to push.
+        # Only mint a write-capable token once we actually have fixes to push.
         if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
@@ -82,38 +84,52 @@ jobs:
           # Least privilege: only Contents write (push mechanical fixes).
           permission-contents: write
 
-      - name: Check out the base repo (trusted) to bootstrap git + remote
-        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          # No ref => the base repo's default branch (trusted code only). The
-          # untrusted PR head is fetched via raw git below and never executed.
-          persist-credentials: false
-
-      - name: Apply the patch onto the PR head and push
+      - name: Rebuild the fix commit via the Git Data API and update the branch
         if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
         env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          # gh api authenticates as the App installation (Contents: write).
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           REPO: ${{ github.repository }}
         run: |
-          if [ ! -s patch/fixes.patch ]; then
-            echo "No patch contents; leaving the PR unchanged." >&2
+          f=fixes/fixes.json
+          if [ ! -s "$f" ] || [ "$(jq 'length' "$f")" = "0" ]; then
+            echo "No mechanical fixes to apply; leaving the PR unchanged." >&2
             exit 0
           fi
-          # Materialise the exact PR head commit via raw git (data only) and apply
-          # the pre-computed patch. No PR code is executed at any point: no uv, no
-          # prek, no build/install hooks — only git plumbing runs.
-          git fetch --depth=1 origin "$HEAD_SHA"
-          git checkout --force --detach "$HEAD_SHA"
-          git apply --whitespace=nowarn patch/fixes.patch
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "Patch applied to a no-op; nothing to commit." >&2
+          # Refuse to push a partial commit if the fix set includes deletions —
+          # rebuilding those safely is out of scope; leave the PR red for a human.
+          if [ "$(jq '[.[] | select(.status == "D")] | length' "$f")" != "0" ]; then
+            echo "Fix set includes deletions; refusing a partial auto-fix." >&2
             exit 0
           fi
-          git config user.name 'optimizer-release-bot[bot]'
-          git config user.email 'optimizer-release-bot[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'ci: 🤖 mechanical auto-fix'
-          git push "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_BRANCH}"
+          # Rebuild the fix commit entirely through the Git Data API. The PR head
+          # is referenced only as an API parameter (base tree + parent) — its code
+          # is never checked out, fetched, or executed in this privileged job.
+          head_tree=$(gh api "repos/$REPO/git/commits/$HEAD_SHA" -q '.tree.sha')
+          tree='[]'
+          len=$(jq 'length' "$f")
+          i=0
+          while [ "$i" -lt "$len" ]; do
+            path=$(jq -r ".[$i].path" "$f")
+            mode=$(jq -r ".[$i].mode" "$f")
+            blob=$(jq -c ".[$i] | {content, encoding: \"base64\"}" "$f" \
+              | gh api "repos/$REPO/git/blobs" --input - -q '.sha')
+            tree=$(jq -c --arg p "$path" --arg m "$mode" --arg s "$blob" \
+              '. + [{path: $p, mode: $m, type: "blob", sha: $s}]' <<<"$tree")
+            i=$((i + 1))
+          done
+          new_tree=$(jq -nc --arg base "$head_tree" --argjson t "$tree" \
+            '{base_tree: $base, tree: $t}' \
+            | gh api "repos/$REPO/git/trees" --input - -q '.sha')
+          new_commit=$(jq -nc --arg t "$new_tree" --arg p "$HEAD_SHA" \
+            '{message: "ci: 🤖 mechanical auto-fix", tree: $t, parents: [$p],
+              author: {name: "optimizer-release-bot[bot]",
+                       email: "optimizer-release-bot[bot]@users.noreply.github.com"}}' \
+            | gh api "repos/$REPO/git/commits" --input - -q '.sha')
+          # force=false => a branch that moved since Validate ran is a non-fast-
+          # forward the API rejects; we never clobber newer work with a stale fix.
+          jq -nc --arg s "$new_commit" '{sha: $s, force: false}' \
+            | gh api -X PATCH "repos/$REPO/git/refs/heads/$HEAD_BRANCH" --input -
+          echo "Pushed mechanical auto-fix $new_commit to $HEAD_BRANCH." >&2

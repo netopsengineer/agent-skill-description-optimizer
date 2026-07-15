@@ -142,12 +142,18 @@ jobs:
         with:
           version: "0.11.28"
 
-      - name: Compute mechanical fixes as a patch
+      - name: Compute mechanical fixes as self-contained data
         id: patch
         # Mirror the auto-fixers exactly (lockfile refresh + every autofix hook).
         # prek's exit code is ignored: non-fixable failures (real pytest/pyright
-        # errors) leave the tree unchanged, so the patch is empty and nothing is
+        # errors) leave the tree unchanged, so the fix set is empty and nothing is
         # committed downstream — the PR stays red for a human.
+        #
+        # Emit each changed file as {path, mode, status, base64 content} rather
+        # than a diff, so the privileged Auto-fix job can rebuild the commit via
+        # the Git Data API WITHOUT ever checking out, fetching, or executing this
+        # PR's code. (Assumes paths without embedded tabs/newlines — true for this
+        # repo's tracked files.)
         env:
           UV_MALWARE_CHECK: "1"
         run: |
@@ -155,19 +161,36 @@ jobs:
           uv sync
           uv run prek run --all-files || true
           git add -A
-          git diff --cached --binary > fixes.patch || true
-          if [ -s fixes.patch ]; then
+          git diff --cached --no-renames --raw > raw.txt
+          entries='[]'
+          while IFS="$(printf '\t')" read -r meta path; do
+            [ -n "$path" ] || continue
+            status=${meta##* }              # last token of the metadata field
+            # shellcheck disable=SC2086     # intentional split: meta is git-controlled
+            set -- $meta
+            mode=$2                          # new file mode (000000 for deletions)
+            if [ "$status" = "D" ]; then
+              entry=$(jq -nc --arg p "$path" '{path:$p, status:"D"}')
+            else
+              entry=$(jq -nc --arg p "$path" --arg m "$mode" --arg s "$status" \
+                --arg c "$(base64 -w0 "$path")" \
+                '{path:$p, mode:$m, status:$s, content:$c}')
+            fi
+            entries=$(jq -c --argjson e "$entry" '. + [$e]' <<<"$entries")
+          done < raw.txt
+          printf '%s\n' "$entries" > fixes.json
+          if [ "$entries" != "[]" ]; then
             echo "has_patch=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_patch=false" >> "$GITHUB_OUTPUT"
             echo "No mechanical fixes to apply." >&2
           fi
 
-      - name: Upload the fixes patch
+      - name: Upload the fix set
         if: steps.patch.outputs.has_patch == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: autofix-patch
-          path: fixes.patch
+          name: autofix-fixes
+          path: fixes.json
           retention-days: 1
           if-no-files-found: error
