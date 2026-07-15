@@ -32,11 +32,11 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    # Only default-days is supported for the pre-commit ecosystem; the
+    # semver-tiered keys are valid solely for ecosystems that expose semver
+    # update-types (e.g. uv) and are rejected by Dependabot's schema here.
     cooldown:
       default-days: 7
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
     groups:
       pre-commit:
         patterns:
@@ -53,11 +53,10 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    # Only default-days is supported for the github-actions ecosystem (see the
+    # pre-commit note above); the semver-tiered keys are uv-only.
     cooldown:
       default-days: 7
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
     groups:
       github-actions:
         patterns:
