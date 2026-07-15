@@ -105,3 +105,92 @@ jobs:
         uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Unprivileged half of the Dependabot auto-fix flow. Runs the SAME mechanical
+  # fixers as `gate`, but here in the untrusted pull_request context (no secrets,
+  # read-only token) and captures the result as a patch artifact. The privileged
+  # Auto-fix workflow later APPLIES this patch without ever executing PR code, so
+  # untrusted code never runs in a context that holds a write credential. Gated to
+  # Dependabot PRs; skipped (and never required) on human PRs. continue-on-error
+  # keeps a compute hiccup from flipping Validate's conclusion — the failure signal
+  # that drives Auto-fix stays owned by gate/deps-security/pr-title.
+  autofix-patch:
+    name: autofix-patch
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920  # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Check out the PR head commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # Pin to the head SHA (not the merge ref) so the patch applies cleanly
+          # onto the same commit the privileged job checks out.
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          version: "0.11.28"
+
+      - name: Compute mechanical fixes as self-contained data
+        id: patch
+        # Mirror the auto-fixers exactly (lockfile refresh + every autofix hook).
+        # prek's exit code is ignored: non-fixable failures (real pytest/pyright
+        # errors) leave the tree unchanged, so the fix set is empty and nothing is
+        # committed downstream — the PR stays red for a human.
+        #
+        # Emit each changed file as {path, mode, status, base64 content} rather
+        # than a diff, so the privileged Auto-fix job can rebuild the commit via
+        # the Git Data API WITHOUT ever checking out, fetching, or executing this
+        # PR's code. (Assumes paths without embedded tabs/newlines — true for this
+        # repo's tracked files.)
+        env:
+          UV_MALWARE_CHECK: "1"
+        run: |
+          uv lock
+          uv sync
+          uv run prek run --all-files || true
+          git add -A
+          git diff --cached --no-renames --raw > raw.txt
+          entries='[]'
+          while IFS="$(printf '\t')" read -r meta path; do
+            [ -n "$path" ] || continue
+            status=${meta##* }              # last token of the metadata field
+            # shellcheck disable=SC2086     # intentional split: meta is git-controlled
+            set -- $meta
+            mode=$2                          # new file mode (000000 for deletions)
+            if [ "$status" = "D" ]; then
+              entry=$(jq -nc --arg p "$path" '{path:$p, status:"D"}')
+            else
+              entry=$(jq -nc --arg p "$path" --arg m "$mode" --arg s "$status" \
+                --arg c "$(base64 -w0 "$path")" \
+                '{path:$p, mode:$m, status:$s, content:$c}')
+            fi
+            entries=$(jq -c --argjson e "$entry" '. + [$e]' <<<"$entries")
+          done < raw.txt
+          printf '%s\n' "$entries" > fixes.json
+          if [ "$entries" != "[]" ]; then
+            echo "has_patch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_patch=false" >> "$GITHUB_OUTPUT"
+            echo "No mechanical fixes to apply." >&2
+          fi
+
+      - name: Upload the fix set
+        if: steps.patch.outputs.has_patch == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: autofix-fixes
+          path: fixes.json
+          retention-days: 1
+          if-no-files-found: error
