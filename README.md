@@ -1,4 +1,4 @@
-# Skill description optimizer (no API key)
+# Skill Description Optimizer (no API key)
 
 [![Built for Claude Code](https://img.shields.io/badge/Built_for-Claude_Code-D97757?style=for-the-badge&logo=claude&logoColor=white&labelColor=1a1a1a)](https://docs.claude.com/en/docs/claude-code)
 [![Release](https://img.shields.io/github/actions/workflow/status/netopsengineer/agent-skill-description-optimizer/release.yml?branch=main&style=for-the-badge&logo=semanticrelease&logoColor=white&label=Release&labelColor=1a1a1a)](https://github.com/netopsengineer/agent-skill-description-optimizer/actions/workflows/release.yml)

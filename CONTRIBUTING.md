@@ -29,7 +29,7 @@ so `uv sync` installs it). Install the git hooks once with `prek install -f`.
 ## Verifying locally
 
 The canonical validation gate lives in [`AGENTS.md`](AGENTS.md) (§Validation gates) and
-is the single source of truth. CI does not maintain a separate command list — it runs the
+is the single source of truth. CI does not maintain a separate command list - it runs the
 exact same `.pre-commit-config.yaml` suite. Run it locally with one command:
 
 ```bash
@@ -41,8 +41,8 @@ That covers lint, format, type-check, tests, secret scanning, and workflow secur
 
 ## CI/CD and the release process
 
-CI is defined entirely under [`.github/`](.github/). The pipeline is autonomous — there is
-no human review gate — and rests on four automation behaviors:
+CI is defined entirely under [`.github/`](.github/). The pipeline is autonomous - there is
+no human review gate - and rests on four automation behaviors:
 
 - **Validate** (`.github/workflows/validate.yml`) is the sole required status check. On
   every PR and every push to `main` it runs the full `prek` gate, a dependency-advisory
@@ -60,7 +60,7 @@ no human review gate — and rests on four automation behaviors:
   a Dependabot PR automatically once Validate is green. If Validate fails on a bot PR with
   a mechanically fixable problem, **auto-fix** (`.github/workflows/auto-fix.yml`) refreshes
   the lockfile, applies every autofix hook, and pushes the result back so the checks re-run
-  — no LLM, purely mechanical.
+    - no LLM, purely mechanical.
 
 The configuration mirrors the local gate exactly, so "green locally" and "green in CI" mean
 the same thing. For the agent-facing execution contract, see `AGENTS.md`.
