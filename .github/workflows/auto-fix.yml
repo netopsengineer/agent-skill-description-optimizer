@@ -1,14 +1,20 @@
 ---
 name: Auto-fix
 
-# React to the Validate workflow FAILING on a bot/Dependabot PR and push mechanical
-# (non-LLM) fixes back. workflow_run runs in the base-repo context, so the App-token
-# secrets are available; the App-token push re-triggers Validate (GITHUB_TOKEN pushes
-# would not). Human PRs are never auto-mutated.
+# Privileged half of the Dependabot auto-fix flow. React to the Validate workflow
+# FAILING on a Dependabot PR and push the mechanical fixes that Validate's
+# unprivileged `autofix-patch` job already computed. This job only APPLIES a
+# pre-computed patch (data) and pushes it — it never runs uv/prek or any other PR
+# code, and it never checks out the untrusted ref with actions/checkout, so no
+# untrusted code executes in this privileged, write-credentialled context.
+# workflow_run runs in the base-repo context, so the App-token secrets are
+# available; the App-token push re-triggers Validate (GITHUB_TOKEN pushes would
+# not). Human PRs are never auto-mutated.
 on:
   # zizmor: ignore[dangerous-triggers] workflow_run is required by design (react to
   # Validate FAILING and re-trigger CI after the App-token push); it runs in the
-  # base-repo context and never checks out fork code at elevated privilege.
+  # base-repo context. The PR head is materialised via raw git and only patched,
+  # never executed, so no untrusted code runs at elevated privilege.
   workflow_run:
     workflows: [Validate]
     types: [completed]
@@ -30,73 +36,84 @@ jobs:
       github.event.workflow_run.actor.login == 'dependabot[bot]'
     permissions:
       contents: read
+      actions: read  # download-artifact reads the triggering run's artifacts
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920  # v2.20.0
         with:
           egress-policy: audit
 
-      - name: Mint a GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
-        with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Least privilege: only Contents write (checkout + push mechanical fixes).
-          permission-contents: write
-
-      - name: Check out the PR head branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          ref: ${{ github.event.workflow_run.head_branch }}
-          token: ${{ steps.app-token.outputs.token }}
-          persist-credentials: false
-          fetch-depth: 0
-
       - name: Guard against auto-fix loops
         id: guard
-        # Abort if the head commit is already an auto-fix commit — prevents an
+        # Abort if the PR head is already an auto-fix commit — prevents an
         # infinite fix -> fail -> fix cycle when fixers cannot green the checks.
+        # Decided from the event payload; no PR checkout needed.
+        env:
+          HEAD_MSG: ${{ github.event.workflow_run.head_commit.message }}
         run: |
-          msg="$(git log -1 --pretty=%s)"
-          if printf '%s' "$msg" | grep -q '^ci: 🤖 mechanical auto-fix'; then
+          if printf '%s' "$HEAD_MSG" | head -n1 | grep -q '^ci: 🤖 mechanical auto-fix'; then
             echo "Head is already an auto-fix commit; skipping to avoid a loop." >&2
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Install uv
+      - name: Download the mechanical-fix patch
+        id: download
         if: steps.guard.outputs.skip == 'false'
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        # Missing artifact (no fixable changes, or a real red PR) is the normal
+        # no-op case, not an error — fall through and let later steps skip.
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          version: "0.11.28"
+          name: autofix-patch
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: patch
 
-      - name: Apply mechanical fixes
-        if: steps.guard.outputs.skip == 'false'
-        # Refresh the lockfile and run every autofix hook. prek's exit code is
-        # ignored: non-fixable failures (real pytest/pyright errors) leave the tree
-        # unchanged, so nothing is committed and the PR stays red for a human.
-        env:
-          UV_MALWARE_CHECK: "1"
-        run: |
-          uv lock
-          uv sync
-          uv run prek run --all-files || true
+      - name: Mint a GitHub App token
+        id: app-token
+        # Only mint a write-capable token once we actually have a patch to push.
+        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Least privilege: only Contents write (push mechanical fixes).
+          permission-contents: write
 
-      - name: Commit and push fixes if anything changed
-        if: steps.guard.outputs.skip == 'false'
+      - name: Check out the base repo (trusted) to bootstrap git + remote
+        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # No ref => the base repo's default branch (trusted code only). The
+          # untrusted PR head is fetched via raw git below and never executed.
+          persist-credentials: false
+
+      - name: Apply the patch onto the PR head and push
+        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           REPO: ${{ github.repository }}
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git config user.name 'optimizer-release-bot[bot]'
-            git config user.email 'optimizer-release-bot[bot]@users.noreply.github.com'
-            git add -A
-            git commit -m 'ci: 🤖 mechanical auto-fix'
-            git push "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_BRANCH}"
-          else
-            echo "No mechanical fixes to apply; leaving the PR unchanged." >&2
+          if [ ! -s patch/fixes.patch ]; then
+            echo "No patch contents; leaving the PR unchanged." >&2
+            exit 0
           fi
+          # Materialise the exact PR head commit via raw git (data only) and apply
+          # the pre-computed patch. No PR code is executed at any point: no uv, no
+          # prek, no build/install hooks — only git plumbing runs.
+          git fetch --depth=1 origin "$HEAD_SHA"
+          git checkout --force --detach "$HEAD_SHA"
+          git apply --whitespace=nowarn patch/fixes.patch
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Patch applied to a no-op; nothing to commit." >&2
+            exit 0
+          fi
+          git config user.name 'optimizer-release-bot[bot]'
+          git config user.email 'optimizer-release-bot[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'ci: 🤖 mechanical auto-fix'
+          git push "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_BRANCH}"
