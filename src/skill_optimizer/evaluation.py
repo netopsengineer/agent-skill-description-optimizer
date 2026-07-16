@@ -50,7 +50,9 @@ def _stream_events(
     Yields:
         Decoded stream-json event objects, in order.
     """
-    assert proc.stdout is not None
+    # Type-narrowing, not a runtime guard: proc is always constructed with
+    # stdout=PIPE, which guarantees a non-None stream.
+    assert proc.stdout is not None  # noqa: S101 # nosec B101
     start = time.monotonic()
     buffer = ""
     while time.monotonic() - start < timeout:
@@ -136,7 +138,10 @@ def run_single_query(
             cmd += ["--model", model]
         if settings_json:
             cmd += ["--settings", settings_json]
-        proc = subprocess.Popen(
+        # cmd is a fixed argv list built from internal constants and CLI-provided
+        # model/settings strings, never a shell string -- no shell=True, no injection
+        # surface.
+        proc = subprocess.Popen(  # noqa: S603 # nosec B603
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

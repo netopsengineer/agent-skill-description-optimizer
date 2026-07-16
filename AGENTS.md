@@ -126,6 +126,7 @@ uv run pytest
 uv run pyright
 uv run ruff check .
 uv run pydoclint src/skill_optimizer optimize_description_v2.py
+uvx bandit -c pyproject.toml -r src optimize_description_v2.py
 sourcery review src/skill_optimizer optimize_description_v2.py tests
 ```
 
@@ -134,6 +135,13 @@ sourcery review src/skill_optimizer optimize_description_v2.py tests
 branch is either exercised or covered by a justified exclusion in `[tool.coverage.report]
 exclude_lines` — never a bare pragma. Use `uv run pytest --no-cov` for a partial
 file/selector run where a sub-100 result is expected.
+
+`ruff check .` includes flake8-bandit (`S`) rules (`[tool.ruff.lint] extend-select`);
+`bandit` itself still runs separately (also wired as a pre-commit/prek hook) because its
+`S404`-equivalent check (`B404`, flagging the bare `import subprocess`) needs ruff's
+unstable `--preview` flag to reproduce — everything else the two tools agree on. Tests
+are exempted from both (assert is normal pytest idiom, and integration tests spawn real
+subprocesses per the Invoke forms above) via `per-file-ignores`/`exclude_dirs`.
 
 ## Packaging invariants
 

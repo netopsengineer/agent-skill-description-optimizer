@@ -513,7 +513,10 @@ def _run_improver_subprocess(
     cmd = [claude_bin(), "-p", "--model", model, "--output-format", "text"]
     if effort:
         cmd += ["--effort", effort]
-    return subprocess.run(
+    # cmd is a fixed argv list built from internal constants and CLI-provided
+    # model/effort strings, never a shell string -- no shell=True, no injection
+    # surface. The prompt travels over stdin, not argv.
+    return subprocess.run(  # noqa: S603 # nosec B603
         cmd,
         input=prompt,
         capture_output=True,
