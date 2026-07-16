@@ -91,7 +91,8 @@ uv tool install agent-skill-description-optimizer --python '>=3.14'
 Via `uvx` for a temporary environment or CI:
 
 ```bash
-uvx --python '>=3.14' agent-skill-description-optimizer --help
+uvx --python '>=3.14' --from agent-skill-description-optimizer \
+  optimize-skill-description --help
 ```
 
 Via `pip`:
