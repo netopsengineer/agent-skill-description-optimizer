@@ -40,7 +40,7 @@ from skill_optimizer.selection import (
     summarize,
     summarize_verbose,
 )
-from skill_optimizer.skill_md import parse_skill_md, write_description
+from skill_optimizer.skill_md import parse_skill_md, safe_name_token, write_description
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +304,14 @@ def _load_eval_set(path: Path) -> list[EvalQuery]:
         data: Any = json.loads(text)
     except json.JSONDecodeError as exc:
         raise ValueError("Invalid eval set: invalid JSON") from exc
+    except RecursionError as exc:
+        # A pathologically nested eval file overflows json's C-stack recursion guard,
+        # surfacing as RecursionError (a RuntimeError, not JSONDecodeError). Map it to
+        # the same friendly message so the precondition contract holds (fail legibly,
+        # never a mid-run traceback). A separate clause -- not
+        # ``except (json.JSONDecodeError, RecursionError)`` -- because ruff-format
+        # rewrites that tuple into the invalid Py2 ``except A, B:`` syntax.
+        raise ValueError("Invalid eval set: invalid JSON") from exc
     items = _unwrap_eval_root(data)
     if not items:
         raise ValueError("Invalid eval set: must contain at least one query")
@@ -451,7 +459,7 @@ def _score_str(per_query: list[PerQuery]) -> str:
         ``"k/N"`` (judged-and-passed over judged), with ``" (+u unjudged)"`` appended
         when any query was unjudged, or ``"n/a"`` when no query was judged.
     """
-    passed, _failed, total, unjudged = _split_counts(per_query)
+    passed, _, total, unjudged = _split_counts(per_query)
     if total == 0:
         return "n/a"
     suffix = f" (+{unjudged} unjudged)" if unjudged else ""
@@ -1138,8 +1146,11 @@ def _report_paths(
         live = (
             results_dir / "report.html"
             if results_dir is not None
+            # ``skill_name`` is attacker-controlled SKILL.md frontmatter; sanitize it
+            # before it becomes a filename so a hostile name cannot traverse out of the
+            # temp dir when writing the auto report.
             else Path(tempfile.gettempdir())
-            / f"skill_description_report_{skill_name}_{timestamp}.html"
+            / f"skill_description_report_{safe_name_token(skill_name)}_{timestamp}.html"
         )
     else:
         live = Path(args.report)
@@ -1301,7 +1312,11 @@ def run(args: argparse.Namespace) -> None:
         iterations_run: int,
         improver_failed: list[dict[str, Any]],
     ) -> None:
-        if live_report_path is None:
+        # Defensive/type-narrowing guard: ``_emit_live`` is only wired into the loop when
+        # ``live_report_path`` is not None (see the ``emit=`` argument below), so this
+        # early return is unreachable at runtime -- it is kept solely so the report
+        # writes further down narrow ``Path | None`` to ``Path`` for the type checker.
+        if live_report_path is None:  # pragma: no cover - unreachable; narrows the type
             return
         marked = [{**h, "is_best": i == best_idx} for i, h in enumerate(history)]
         best = marked[best_idx]

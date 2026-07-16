@@ -129,6 +129,12 @@ uv run pydoclint src/skill_optimizer optimize_description_v2.py
 sourcery review src/skill_optimizer optimize_description_v2.py tests
 ```
 
+`uv run pytest` enforces **100% line + branch coverage** (`--cov` is wired into
+`addopts`; the floor is `[tool.coverage.report] fail_under = 100`). Every statement and
+branch is either exercised or covered by a justified exclusion in `[tool.coverage.report]
+exclude_lines` — never a bare pragma. Use `uv run pytest --no-cov` for a partial
+file/selector run where a sub-100 result is expected.
+
 ## Packaging invariants
 
 - Backend is `uv_build`; import package is `src/skill_optimizer`

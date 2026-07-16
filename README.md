@@ -80,17 +80,30 @@ for agents), and `--results-dir <dir>` collects `results.json`, `report.html`, a
 
 ## Install
 
-Once published, the CLI will be installable from PyPI:
+The CLI is installable from PyPI:
+
+Via `uv`:
 
 ```bash
-uv tool install agent-skill-description-optimizer   # or: uvx agent-skill-description-optimizer --help
+uv tool install agent-skill-description-optimizer --python '>=3.14'
+```
+
+Via `uvx` for a temporary environment or CI:
+
+```bash
+uvx --python '>=3.14' agent-skill-description-optimizer --help
+```
+
+Via `pip`:
+
+```bash
 pip install agent-skill-description-optimizer
 ```
 
-This package is **not yet published to PyPI**; until it is, install from source:
+Install from source:
 
 ```bash
-uv sync   # creates the venv and installs the project + dev tools
+uv sync
 ```
 
 This installs the `optimize-skill-description` console script. The tool can be run

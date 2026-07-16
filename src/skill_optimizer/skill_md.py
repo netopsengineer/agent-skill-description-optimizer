@@ -6,6 +6,39 @@ from pathlib import Path
 # YAML block/folded scalar indicators that carry no inline text on the ``key:`` line.
 _BLOCK_SCALAR_INDICATORS = frozenset({"|", ">", "|-", ">-", "|+", ">+", ""})
 
+# Characters kept verbatim when a skill name is reduced to a filesystem path token.
+# Every other character — path separators, whitespace, shell/format metacharacters —
+# collapses to a single ``_``. A shared skill's ``name:`` is attacker-controlled, so it
+# must never reach a filename verbatim.
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+# Cap on the path-token length so a pathologically long ``name:`` cannot produce an
+# over-long filename that the OS rejects with ``ENAMETOOLONG`` mid-run.
+_MAX_NAME_TOKEN_CHARS = 64
+
+
+def safe_name_token(name: str, *, fallback: str = "skill") -> str:
+    """Reduce a skill name to a filesystem-safe token for use as a path component.
+
+    A shared ``SKILL.md``'s ``name:`` frontmatter is attacker-controlled, so it must
+    never reach a filename verbatim: an absolute path, a ``../`` sequence, or a bare path
+    separator would let a downstream write escape its intended directory. This collapses
+    every run of characters outside ``[A-Za-z0-9._-]`` to a single ``_``, strips leading
+    and trailing separators/dots (so a name that is only dots or separators — e.g. ``..``
+    or ``/`` — can never yield ``.``, ``..``, or an empty component), caps the length,
+    and falls back to a fixed token when nothing usable remains.
+
+    Args:
+        name: The raw, possibly attacker-controlled skill name.
+        fallback: Token returned when ``name`` has no filesystem-safe characters.
+
+    Returns:
+        A token drawn only from ``[A-Za-z0-9._-]``, never empty, never ``.`` or ``..``,
+        and never containing a path separator.
+    """
+    token = _UNSAFE_NAME_CHARS.sub("_", name).strip("._-")[:_MAX_NAME_TOKEN_CHARS]
+    return token.strip("._-") or fallback
+
 
 def parse_skill_md(skill_md: Path) -> tuple[str, str, str]:
     """Extract the name, description, and body from a ``SKILL.md`` file.

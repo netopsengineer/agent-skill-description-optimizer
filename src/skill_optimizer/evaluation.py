@@ -26,6 +26,7 @@ from skill_optimizer.models import (
     ModelResult,
     PerQuery,
 )
+from skill_optimizer.skill_md import safe_name_token
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,11 @@ def run_single_query(
         terminal event) so callers can exclude it rather than score it as a miss.
     """
     rid = uuid.uuid4().hex[:8]
-    cmd_name = f"{skill_name}-cand-{rid}"
+    # ``skill_name`` comes from attacker-controlled SKILL.md frontmatter; sanitize it to
+    # a path-safe token before it becomes the slash-command filename, so a hostile name
+    # (``/abs/path``, ``../..``) cannot escape the throwaway project dir. The same token
+    # is the command name detected in the stream, so filename and detection stay aligned.
+    cmd_name = f"{safe_name_token(skill_name)}-cand-{rid}"
     with tempfile.TemporaryDirectory(
         prefix=f"skilleval-{rid}-", ignore_cleanup_errors=True
     ) as tmp:
