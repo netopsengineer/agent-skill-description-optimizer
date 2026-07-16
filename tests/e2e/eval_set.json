@@ -1,0 +1,34 @@
+[
+  {
+    "query": "I've got this regex ^(?=.*[A-Z])(?=.*\\d).{8,}$ for password validation in our signup form (auth.py line 42) and it's rejecting passwords that should pass, like 'Passw0rd'. can you break down what each part does and figure out why it's failing?",
+    "should_trigger": true
+  },
+  {
+    "query": "trying to write a regex that matches US phone numbers in a bunch of different formats (555-123-4567, (555) 123-4567, 555.123.4567, +1 555 123 4567) but my current pattern \\d{3}-\\d{3}-\\d{4} only catches the first one. walk me through building something more flexible",
+    "should_trigger": true
+  },
+  {
+    "query": "our log parser uses this ugly regex to pull timestamps out of nginx access logs and it's timing out on some lines (looks like catastrophic backtracking?). here's the pattern: (.*)\\[(.*)\\](.*). can you explain what's going wrong and rewrite it",
+    "should_trigger": true
+  },
+  {
+    "query": "can you explain step by step what this regex from our old codebase does: (?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*) -- nobody who wrote it still works here and I need to document it for the team wiki",
+    "should_trigger": true
+  },
+  {
+    "query": "I need to write a SQL WHERE clause that filters rows where the email column LIKE '%@company.com' -- can you help me with the query syntax for our reporting dashboard",
+    "should_trigger": false
+  },
+  {
+    "query": "how do I use glob patterns in my .gitignore to exclude all .log files and the entire build/ directory, our repo keeps accumulating junk",
+    "should_trigger": false
+  },
+  {
+    "query": "can you write a python function that splits a csv line on commas but respects quoted fields with embedded commas, i'm parsing an export from our billing system",
+    "should_trigger": false
+  },
+  {
+    "query": "I'm designing a JSON Schema for our API's user object -- need required fields for name, email, and age with age as a positive integer, and want to validate a sample payload against it",
+    "should_trigger": false
+  }
+]
