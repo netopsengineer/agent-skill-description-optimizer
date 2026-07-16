@@ -5,6 +5,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Operator recovery when GitHub accepts a main push but drops its workflow dispatch.
+  workflow_dispatch:
 
 # Read-only by default; jobs opt into the least privilege they need.
 permissions:
@@ -69,6 +71,8 @@ jobs:
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
         with:
           version: "0.11.29"
+          # gate owns the shared cache write; parallel saves race on the same key.
+          save-cache: false
 
       - name: Sync the environment
         env:

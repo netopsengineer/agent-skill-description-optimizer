@@ -4,6 +4,8 @@ name: Release
 on:
   push:
     branches: [main]
+  # Operator recovery when GitHub accepts a main push but drops its workflow dispatch.
+  workflow_dispatch:
 
 # Read-only by default; the release job elevates to contents: write, the publish
 # job to id-token/attestations for OIDC trusted publishing.
