@@ -51,7 +51,9 @@ def stratified_split(
             raise ValueError(
                 f"{label} class must contain at least 2 queries when holdout > 0"
             )
-    rng = random.Random(seed)
+    # Deterministic, reproducible train/test split -- not a security/crypto use, so
+    # the standard (non-cryptographic) RNG is the correct choice here.
+    rng = random.Random(seed)  # noqa: S311 # nosec B311
     rng.shuffle(positive)
     rng.shuffle(negative)
     train: list[int] = []

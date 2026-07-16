@@ -81,3 +81,61 @@ def test_external_cwd_help_succeeds(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "--eval-set" in result.stdout
     assert "--skill-path" in result.stdout
+
+
+def test_dunder_main_module_imports() -> None:
+    # ``python -m skill_optimizer`` executes skill_optimizer/__main__.py, whose
+    # module-level ``from ...cli import main`` must resolve. Reloading executes that
+    # line; the ``if __name__ == "__main__"`` block is not run on import.
+    import importlib
+
+    import skill_optimizer.__main__ as dunder_main
+
+    importlib.reload(dunder_main)
+    assert callable(dunder_main.main)
+
+
+def test_version_fallback_when_package_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # In a bare source tree with no installed distribution, ``metadata.version`` raises
+    # ``PackageNotFoundError`` and ``__version__`` falls back to the fixed sentinel.
+    import importlib
+    from importlib import metadata
+
+    import skill_optimizer
+
+    def _not_found(_name: str) -> str:
+        raise metadata.PackageNotFoundError
+
+    monkeypatch.setattr(metadata, "version", _not_found)
+    try:
+        importlib.reload(skill_optimizer)
+        assert skill_optimizer.__version__ == "0.0.0+unknown"
+    finally:
+        # Restore the real (installed) version so later tests see the true value.
+        monkeypatch.undo()
+        importlib.reload(skill_optimizer)
+
+
+def test_python_m_invocation_reports_version() -> None:
+    # ``python -m skill_optimizer --version`` -- one of the four documented invocations
+    # -- must work end to end (argparse --version exits 0 before any claude preflight).
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--project",
+            str(PROJECT_ROOT),
+            "python",
+            "-m",
+            "skill_optimizer",
+            "--version",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip()  # prints "<prog> <version>"

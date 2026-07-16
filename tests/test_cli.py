@@ -19,6 +19,7 @@ from skill_optimizer.cli import (
     _optimize,  # pyright: ignore[reportPrivateUsage]
     _validate_iterations,  # pyright: ignore[reportPrivateUsage]
     build_parser,
+    main,
     run,
 )
 from skill_optimizer.improver import ImproverFatalProcessError, ImproverRetryableError
@@ -966,6 +967,46 @@ def test_load_eval_set_missing_file_is_friendly(tmp_path: Path) -> None:
     with pytest.raises(ValueError) as excinfo:
         _load_eval_set(missing)
     assert str(excinfo.value).startswith(f"Invalid eval set: cannot read {missing}:")
+
+
+def test_load_eval_set_deeply_nested_json_is_friendly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A pathologically nested eval file overflows json's C-stack recursion guard,
+    # surfacing as RecursionError (a RuntimeError, not JSONDecodeError). It must map to
+    # the same friendly "Invalid eval set: invalid JSON" as any other malformed JSON,
+    # never escape as a mid-run traceback (the precondition contract). RecursionError is
+    # injected deterministically here; a real overflow depth is platform-dependent.
+    eval_path = tmp_path / "eval.json"
+    eval_path.write_text("[]")
+
+    def _raise_recursion(*_: Any, **__: Any) -> Any:
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr(json, "loads", _raise_recursion)
+    with pytest.raises(ValueError) as excinfo:
+        _load_eval_set(eval_path)
+    assert str(excinfo.value) == "Invalid eval set: invalid JSON"
+
+
+def test_report_paths_sanitizes_malicious_skill_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The auto-report filename embeds the attacker-controlled skill name. A hostile
+    # ``name:`` must not traverse out of the temp dir: the sanitized token keeps the
+    # report file as a single component directly inside ``gettempdir()``.
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    args = SimpleNamespace(results_dir=None, out=None, report="auto")
+    _out, results_dir, live = cli_module._report_paths(  # pyright: ignore[reportPrivateUsage]
+        cast("Any", args), "../../../../etc/cron.d/evil", "2026-07-15_000000"
+    )
+    assert results_dir is None
+    assert live is not None
+    assert live.parent == Path(tempfile.gettempdir())
+    assert ".." not in live.name
+    assert "/" not in live.name
 
 
 # ---- Nine-cell destination x report no-side-effect matrix -------------------- #
@@ -2078,3 +2119,186 @@ def test_verbose_help_names_detailed_summaries() -> None:
     assert "per-model" in help_text
     assert "confusion-matrix" in help_text
     assert "per-query" in help_text
+
+
+# --------------------------------------------------------------------------- #
+# run() / main() branch coverage: preflight exit, description override, verbose
+# summaries, --write outcomes, and the report-writer OSError swallows.
+# --------------------------------------------------------------------------- #
+def test_run_missing_skill_md_exits(tmp_path: Path) -> None:
+    args = build_parser().parse_args(
+        ["--skill-path", str(tmp_path / "nope"), "--eval-set", str(tmp_path / "e.json")]
+    )
+    with pytest.raises(SystemExit, match="No SKILL.md at"):
+        run(args)
+
+
+def test_description_override_replaces_frontmatter_desc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --description overrides the SKILL.md frontmatter description; with an all-pass
+    # early exit the winning (and only) description is the CLI-provided one.
+    skill, eval_file = _setup(tmp_path)
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", _stub_eval_all_pass)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", _no_improver)
+    args = build_parser().parse_args(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+            "--description",
+            "cli-provided desc",
+        ]
+    )
+    run(args)
+    out = json.loads(capsys.readouterr().out)
+    assert out["best_description"] == "cli-provided desc"
+
+
+def test_verbose_emits_detailed_summaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --verbose selects summarize_verbose for both the baseline and each iteration.
+    skill, eval_file = _setup(tmp_path)
+
+    def fake_eval(
+        eval_set: list[EvalQuery],
+        name: Any,
+        description: str,
+        config: Any,
+        *,
+        verbose: bool = True,
+    ) -> EvalResult:
+        return _eval_result(eval_set, config.models, description == "improved desc")
+
+    def fake_improver(*_: Any, **__: Any) -> dict[str, Any]:
+        return {"description": "improved desc", "rationale": "better"}
+
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", fake_eval)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", fake_improver)
+    args = build_parser().parse_args(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+            "--iterations",
+            "1",
+            "--verbose",
+        ]
+    )
+    run(args)
+    assert json.loads(capsys.readouterr().out)["best_description"] == "improved desc"
+
+
+def test_write_persists_improved_description(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --write with a winning candidate rewrites SKILL.md and backs up the original.
+    skill, eval_file = _setup(tmp_path)
+
+    def fake_eval(
+        eval_set: list[EvalQuery],
+        name: Any,
+        description: str,
+        config: Any,
+        *,
+        verbose: bool = True,
+    ) -> EvalResult:
+        return _eval_result(eval_set, config.models, description == "improved desc")
+
+    def fake_improver(*_: Any, **__: Any) -> dict[str, Any]:
+        return {"description": "improved desc", "rationale": "r"}
+
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", fake_eval)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", fake_improver)
+    args = build_parser().parse_args(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+            "--iterations",
+            "1",
+            "--write",
+        ]
+    )
+    run(args)
+    _ = capsys.readouterr()
+    assert "improved desc" in (skill / "SKILL.md").read_text()
+    assert (skill / "SKILL.md.bak").exists()
+
+
+def test_write_reports_no_change_when_best_is_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # --write with an all-pass baseline (best == baseline) writes nothing and logs the
+    # explicit no-change path.
+    skill, eval_file = _setup(tmp_path)
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", _stub_eval_all_pass)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", _no_improver)
+    original = (skill / "SKILL.md").read_text()
+    args = build_parser().parse_args(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+            "--write",
+        ]
+    )
+    with caplog.at_level(logging.INFO, logger="skill_optimizer.cli"):
+        run(args)
+    assert (skill / "SKILL.md").read_text() == original
+    assert not (skill / "SKILL.md.bak").exists()
+    assert any("No change to write" in r.getMessage() for r in caplog.records)
+
+
+def test_main_returns_zero_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill, eval_file = _setup(tmp_path)
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", _stub_eval_all_pass)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", _no_improver)
+    rc = main(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+        ]
+    )
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["best_description"] == "original desc"
+
+
+def test_write_placeholder_and_open_swallows_oserror(tmp_path: Path) -> None:
+    # The report parent cannot be created (it sits under a regular file), so mkdir raises
+    # OSError, which is swallowed -- a headless/unwritable environment never aborts.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x")
+    target = blocker / "sub" / "report.html"
+    cli_module._write_placeholder_and_open(target)  # pyright: ignore[reportPrivateUsage]
+    assert not target.exists()
+
+
+def test_write_html_swallows_oserror(tmp_path: Path) -> None:
+    # Same unwritable-parent condition for the HTML report writer: OSError is swallowed.
+    blocker = tmp_path / "blocker2"
+    blocker.write_text("x")
+    target = blocker / "sub" / "report.html"
+    cli_module._write_html(  # pyright: ignore[reportPrivateUsage]
+        target, {"history": []}, "skill", False
+    )
+    assert not target.exists()

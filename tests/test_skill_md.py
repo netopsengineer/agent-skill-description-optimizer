@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import optimize_description_v2 as m
+from skill_optimizer.skill_md import safe_name_token
 
 
 def _write(tmp_path: Path, text: str) -> Path:
@@ -156,3 +157,61 @@ class TestWriteDescription:
         with pytest.raises(ValueError, match="frontmatter"):
             m.write_description(skill_md, "new")
         assert (tmp_path / "SKILL.md.bak").exists()
+
+
+# --------------------------------------------------------------------------- #
+# safe_name_token — the attacker-controlled ``name:`` must never reach a path
+# component verbatim (path-traversal / temp-dir escape guard).
+# --------------------------------------------------------------------------- #
+class TestSafeNameToken:
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            # Benign names are preserved verbatim (behavior-preserving for real skills).
+            ("my-skill", "my-skill"),
+            ("pdfextract", "pdfextract"),
+            ("skill_v2.1", "skill_v2.1"),
+            # Unsafe runs collapse to a single underscore.
+            ("with spaces", "with_spaces"),
+            ("weird/name", "weird_name"),
+            ("a/../b", "a_.._b"),  # embedded ``..`` is inert without a separator
+        ],
+    )
+    def test_benign_and_collapsed_names(self, name: str, expected: str) -> None:
+        assert safe_name_token(name) == expected
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "/etc/passwd",
+            "/Users/victim/.claude/commands/evil",
+            "../../../../tmp/evil",
+            "..",
+            ".",
+            "...",
+            "/",
+            "////",
+            "./../.",
+            "\\..\\..\\windows",
+        ],
+    )
+    def test_traversal_names_cannot_escape_a_parent_dir(self, name: str) -> None:
+        token = safe_name_token(name)
+        # No path separators survive, and the token is never a bare dot component.
+        assert "/" not in token
+        assert "\\" not in token
+        assert token not in (".", "..", "")
+        assert not Path(token).is_absolute()
+        # Used as a path component (as run_single_query/report paths do), the token
+        # stays inside its intended parent directory.
+        base = Path("/base/dir")
+        assert (base / f"{token}-cand-x.md").parent == base
+
+    def test_empty_or_all_unsafe_falls_back(self) -> None:
+        assert safe_name_token("") == "skill"
+        assert safe_name_token("///") == "skill"
+        assert safe_name_token("...", fallback="fb") == "fb"
+
+    def test_length_is_capped(self) -> None:
+        # A pathologically long name cannot produce an over-long (ENAMETOOLONG) filename.
+        assert safe_name_token("a" * 500) == "a" * 64

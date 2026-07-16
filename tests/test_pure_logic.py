@@ -328,6 +328,42 @@ class TestSummarizeVerbose:
         # No misleading 0%-accuracy line anywhere in the block.
         assert "accuracy=0%" not in out
 
+    def test_per_query_lines_render_pass_fail_and_na(self) -> None:
+        # A non-empty per_query exercises the PASS/FAIL/N/A status rendering (each arm
+        # of the status ternary) that an empty per_query never reaches.
+        ev = _er(
+            per_model_accuracy={"claude-sonnet-4-6": 0.5},
+            mean_accuracy=0.5,
+            min_accuracy=0.5,
+            per_query=[
+                _pq(
+                    0,
+                    "triggers ok",
+                    True,
+                    {"claude-sonnet-4-6": _mr(1.0, True, triggers=1, runs=1)},
+                    True,
+                ),
+                _pq(
+                    1,
+                    "misfires",
+                    False,
+                    {"claude-sonnet-4-6": _mr(1.0, False, triggers=1, runs=1)},
+                    False,
+                ),
+                _pq(
+                    2,
+                    "all timed out",
+                    True,
+                    {"claude-sonnet-4-6": _mr(0.0, None)},
+                    None,
+                ),
+            ],
+        )
+        out = summarize_verbose("BASE", ev)
+        assert "[PASS] expected=True: triggers ok" in out
+        assert "[FAIL] expected=False: misfires" in out
+        assert "[N/A ] expected=True: all timed out" in out
+
 
 # --------------------------------------------------------------------------- #
 # build_improver_prompt

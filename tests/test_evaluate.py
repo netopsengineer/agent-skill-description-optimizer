@@ -4,6 +4,7 @@ Covers the fan-out/aggregation wiring and positional bucketing behavior
 (including the duplicate-query case that was fixed from the original).
 """
 
+import logging
 from typing import Any
 
 import pytest
@@ -120,3 +121,35 @@ def test_subset_result_deep_copies_entries() -> None:
     sub = subset_result(full, _SUBSET_EVAL, [0], ("m",))
     sub["per_query"][0]["models"]["m"]["trigger_rate"] = 999.0
     assert full["per_query"][0]["models"]["m"]["trigger_rate"] != 999.0
+
+
+# --------------------------------------------------------------------------- #
+# evaluate executor loop: success / None / exception tally + progress logging
+# --------------------------------------------------------------------------- #
+def test_evaluate_tallies_success_none_and_exceptions(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # 6 queries x 1 model x 2 repeats = 12 jobs (>10 exercises the periodic progress
+    # log). q0 raises (exception path), q1 is unjudgeable (None), the rest trigger, so
+    # the per-cell error tally, the raising-probe warning, and the final unjudgeable
+    # summary all execute -- branches the wholesale-stubbed CLI suite never reaches.
+    eval_set: list[EvalQuery] = [
+        {"query": f"q{i}", "should_trigger": i % 2 == 0} for i in range(6)
+    ]
+    config = EvalConfig(models=("m",), repeats=2, timeout=5, workers=4, threshold=0.5)
+
+    def fake_probe(query: str, *_: Any) -> bool | None:
+        if query == "q0":
+            raise RuntimeError("boom")
+        return None if query == "q1" else True
+
+    monkeypatch.setattr("skill_optimizer.evaluation.run_query_with_retry", fake_probe)
+    with caplog.at_level(logging.INFO, logger="skill_optimizer.evaluation"):
+        result = evaluate(eval_set, "skill", "desc", config, verbose=True)
+
+    assert result["errors"] == 4  # q0 x2 raised + q1 x2 None -> 4 unjudged probes
+    assert result["score_valid"] is True  # the 8 triggering probes are judged
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("runs" in msg for msg in messages)  # periodic progress line
+    assert any("unjudgeable" in msg for msg in messages)  # final summary line
+    assert any("failed" in msg for msg in messages)  # raising-probe warning

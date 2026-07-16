@@ -334,6 +334,13 @@ def _decode_span(cleaned: str, start: int, end: int) -> tuple[bool, Any]:
         value, decode_end = _DECODER.raw_decode(cleaned, start)
     except json.JSONDecodeError:
         return False, None
+    except RecursionError:
+        # A pathologically nested span overflows the JSON decoder's recursion guard;
+        # treat it as a malformed span (skipped as a whole) rather than letting an
+        # uncaught RecursionError escape the parser's stable-ValueError contract. Kept as
+        # its own clause (not ``except (JSONDecodeError, RecursionError):``) because
+        # ruff-format rewrites that tuple into the invalid Py2 ``except A, B:`` syntax.
+        return False, None
     return (True, value) if decode_end == end + 1 else (False, None)
 
 
@@ -415,6 +422,12 @@ def _parse_improver_output(raw: str) -> dict[str, Any]:
     cleaned = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
     try:
         whole = json.loads(cleaned)
+    except RecursionError as exc:
+        # Pathologically nested JSON overflows the decoder's recursion. Map it to the
+        # stable invalid-JSON message (which the caller treats as a retryable
+        # ``invalid_output``) instead of letting an uncaught RecursionError escape the
+        # parser's ValueError contract and abort the run with a traceback.
+        raise ValueError("Improver returned invalid JSON") from exc
     except json.JSONDecodeError:
         return _extract_top_level_objects(cleaned)
     if isinstance(whole, dict):
@@ -500,7 +513,10 @@ def _run_improver_subprocess(
     cmd = [claude_bin(), "-p", "--model", model, "--output-format", "text"]
     if effort:
         cmd += ["--effort", effort]
-    return subprocess.run(
+    # cmd is a fixed argv list built from internal constants and CLI-provided
+    # model/effort strings, never a shell string -- no shell=True, no injection
+    # surface. The prompt travels over stdin, not argv.
+    return subprocess.run(  # noqa: S603 # nosec B603
         cmd,
         input=prompt,
         capture_output=True,

@@ -13,8 +13,10 @@ from skill_optimizer import call_improver
 from skill_optimizer.improver import (
     ImproverFatalProcessError,
     ImproverRetryableError,
+    _DECODER,  # pyright: ignore[reportPrivateUsage]
     _LaunchBudget,  # pyright: ignore[reportPrivateUsage]
     _parse_improver_output,  # pyright: ignore[reportPrivateUsage]
+    _parse_or_retryable,  # pyright: ignore[reportPrivateUsage]
     _run_improver_subprocess,  # pyright: ignore[reportPrivateUsage]
 )
 
@@ -22,6 +24,10 @@ _NO_JSON = "Improver returned no JSON"
 _MISSING = "Improver JSON missing 'description'"
 _INVALID = "Improver returned invalid JSON"
 _AMBIGUOUS = "Improver returned ambiguous JSON: multiple usable description objects"
+
+# Stub ``fake_run``/``fake_improver`` callables below use ``*_: Any, **__: Any`` to match
+# the real callee's call shape while ignoring the arguments they don't assert on. Bare
+# ``_`` can't be repeated in one signature, so the keyword catch-all is ``__``.
 
 
 def _stub_run(
@@ -375,6 +381,87 @@ class TestParserErrors:
         with pytest.raises(ValueError) as excinfo:
             _parse_improver_output(raw)
         assert str(excinfo.value) == _INVALID
+
+
+class TestParserRecursionSafety:
+    """Pathologically nested ``claude`` stdout must map to the stable invalid-JSON
+    ValueError, never escape as an uncaught RecursionError (which would abort the run
+    with a traceback and no result envelope).
+
+    A deeply nested JSON document overflows the decoder's C-stack recursion guard,
+    surfacing as ``RecursionError`` (independent of ``sys.setrecursionlimit`` on 3.14).
+    That the decoder overflows at *some* depth is CPython's behavior, not this parser's;
+    what these tests own is that when ``RecursionError`` is raised at a decode boundary
+    it is caught and mapped to the stable failure. So they inject ``RecursionError`` at
+    each boundary directly (``json.loads`` for the whole-response path, ``_DECODER``'s
+    ``raw_decode`` for the recovery scanner) -- deterministic and portable, unlike really
+    overflowing a small thread stack, which segfaults on some libc builds and fails to
+    overflow at all where the minimum thread stack is clamped larger.
+    """
+
+    @staticmethod
+    def _raise_recursion(*_: Any, **__: Any) -> Any:
+        raise RecursionError("maximum recursion depth exceeded")
+
+    def test_deeply_nested_whole_response_is_invalid_json(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Whole-response parse: json.loads overflows -> mapped to invalid JSON.
+        monkeypatch.setattr(json, "loads", self._raise_recursion)
+        with pytest.raises(ValueError) as excinfo:
+            _parse_improver_output('{"description": "d"}')
+        assert str(excinfo.value) == _INVALID
+
+    def test_deeply_nested_object_in_prose_is_invalid_json(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Leading prose forces the recovery scanner; its per-span raw_decode overflows
+        # and must be treated as a malformed span (terminal invalid JSON), not a crash.
+        monkeypatch.setattr(_DECODER, "raw_decode", self._raise_recursion)
+        with pytest.raises(ValueError) as excinfo:
+            _parse_improver_output('here you go: {"description": "d"}')
+        assert str(excinfo.value) == _INVALID
+
+    def test_deeply_nested_stdout_is_retryable_not_fatal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # End to end: a hostile deeply nested improver response is classified as a
+        # retryable ``invalid_output`` rather than crashing call_improver.
+        _stub_run(monkeypatch, '{"description": "d"}')
+        monkeypatch.setattr(json, "loads", self._raise_recursion)
+        with pytest.raises(ImproverRetryableError) as excinfo:
+            call_improver("p", "m", None, 10)
+        assert excinfo.value.kind == "invalid_output"
+        assert excinfo.value.message == _INVALID
+
+
+class TestParseOrRetryable:
+    """``_parse_or_retryable`` wraps only allowlisted parser messages as retryable."""
+
+    def test_typed_retryable_error_passes_through(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A parser that itself raises ImproverRetryableError is re-raised unchanged
+        # (not re-wrapped), preserving its kind/message.
+        def boom(_raw: str) -> dict[str, Any]:
+            raise ImproverRetryableError("invalid_output", _INVALID)
+
+        monkeypatch.setattr("skill_optimizer.improver._parse_improver_output", boom)
+        with pytest.raises(ImproverRetryableError) as excinfo:
+            _parse_or_retryable("x")
+        assert excinfo.value.kind == "invalid_output"
+
+    def test_unexpected_valueerror_propagates_fatally(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A non-allowlisted ValueError (a programming/config fault) is NOT reclassified
+        # as retryable -- it propagates unchanged so real bugs surface fatally.
+        def boom(_raw: str) -> dict[str, Any]:
+            raise ValueError("some unexpected internal fault")
+
+        monkeypatch.setattr("skill_optimizer.improver._parse_improver_output", boom)
+        with pytest.raises(ValueError, match="some unexpected internal fault"):
+            _parse_or_retryable("x")
 
 
 # --------------------------------------------------------------------------- #

@@ -49,21 +49,61 @@ module-root = "src"
 
 [dependency-groups]
 dev = [
-    "prek>=0.4.9",
-    "pydoclint>=0.8.6",
-    "pyright>=1.1.410",
-    "pytest>=9.0.3",
+    "prek>=0.4.10",
+    "pydoclint>=0.9.1",
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.15.1",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.15.21",
+    "ruff>=0.15.22",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
 testpaths = ["tests"]
-addopts = "-q"
+# Coverage is enforced on every run (source + branch config lives in [tool.coverage]):
+# a run that drops below the 100% floor fails the gate. Use ``--no-cov`` for a partial
+# file/selector run where a sub-100 result is expected and not a regression.
+addopts = "-q --cov --cov-report=term-missing"
+
+[tool.coverage.run]
+branch = true
+source = ["skill_optimizer", "optimize_description_v2"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# 100% line + branch is the enforced floor. Every statement/branch is either exercised
+# by a test or covered by one of the exclusions below (all standard, non-testable
+# idioms) -- never silenced with a bare pragma. Keep this at 100.
+fail_under = 100
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.ruff.lint]
+# Layer flake8-bandit ("S") security checks onto ruff's own defaults (E4, E7, E9, F)
+# so the fast, always-on lint pass catches most of what a separate bandit run would.
+extend-select = ["S"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert liberally (pytest idiom) and spawn real subprocesses to exercise the
+# CLI end-to-end (AGENTS.md's documented invocation forms) -- neither is a security
+# concern in test code, so the whole flake8-bandit family is exempted here.
+"tests/*" = ["S"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+# B404 (import subprocess) fires on the import alone with no call-site context; this
+# tool's entire purpose is invoking the `claude` CLI via subprocess (AGENTS.md), so the
+# import itself is never the risk -- B603 below still reviews each actual call site.
+skips = ["B404"]
 
 [tool.pydoclint]
 style = "google"
