@@ -232,7 +232,18 @@ mkdir -p "$SCRATCH/out"
 uv run optimize-skill-description \
   --skill-path "$SCRATCH/skill" --eval-set tests/e2e/eval_set.json \
   --models sonnet --repeats 2 --iterations 2 --test-frac 0.25 \
-  --out "$SCRATCH/out" --report none --write --verbose
+  --out "$SCRATCH/out" --report none --write --verbose \
+  > "$SCRATCH/stdout.json"
+
+python3.14 - "$SCRATCH/stdout.json" "$SCRATCH/out/report.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+stdout_report = json.loads(Path(sys.argv[1]).read_text())
+artifact_report = json.loads(Path(sys.argv[2]).read_text())
+assert stdout_report == artifact_report
+PY
 ```
 
 Pass, all required (numeric bounds allow for real-model non-determinism; the improver's
@@ -247,11 +258,17 @@ exact rationale/description wording is never asserted):
   set — proof the improver was actually invoked, which the mocked suite never does
   against a real model.
 - `report.json`'s `history` has exactly one entry with `"is_best": true`, and that
-  entry's `full_mean`/`test_mean` is `>=` the baseline entry's.
-- The captured stdout parses as one JSON object and is byte-identical to
-  `$SCRATCH/out/report.json`.
-- `$SCRATCH/skill/SKILL.md.bak` exists with the fixture's original `description:`;
-  `$SCRATCH/skill/SKILL.md`'s `description:` differs from it.
+  entry's `test_mean` is `>=` the baseline entry's. `full_mean` is reporting-only and
+  may regress because selection uses the held-out score.
+- `$SCRATCH/stdout.json` parses as exactly one JSON object and its parsed value equals
+  the parsed `$SCRATCH/out/report.json`; serialization whitespace and the trailing
+  newline added on stdout are not significant.
+- The `--write` result matches the selected winner:
+    - If `best_description == baseline_description`, `$SCRATCH/skill/SKILL.md` is
+    byte-identical to `tests/e2e/skill/SKILL.md` and no `SKILL.md.bak` exists.
+    - Otherwise, `$SCRATCH/skill/SKILL.md.bak` is byte-identical to the checked-in
+    fixture, `$SCRATCH/skill/SKILL.md`'s `description:` equals `best_description` and
+    differs from the backup's.
 
 Fixture-integrity check (only if baseline read `1.0`): run `git diff
 tests/e2e/skill/SKILL.md`. If it's clean (the fixture is unmodified) and baseline still
