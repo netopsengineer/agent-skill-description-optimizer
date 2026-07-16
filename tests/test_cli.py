@@ -2293,6 +2293,28 @@ def test_write_placeholder_and_open_swallows_oserror(tmp_path: Path) -> None:
     assert not target.exists()
 
 
+def test_write_placeholder_opens_absolute_file_uri(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "report directory" / "report.html"
+    opened: list[str] = []
+
+    def capture_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(
+        "skill_optimizer.cli.webbrowser.open",
+        capture_open,
+        raising=False,
+    )
+
+    cli_module._write_placeholder_and_open(target)  # pyright: ignore[reportPrivateUsage]
+
+    assert target.exists()
+    assert opened == [target.resolve().as_uri()]
+
+
 def test_write_html_swallows_oserror(tmp_path: Path) -> None:
     # Same unwritable-parent condition for the HTML report writer: OSError is swallowed.
     blocker = tmp_path / "blocker2"
