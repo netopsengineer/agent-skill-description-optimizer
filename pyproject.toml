@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "agent-skill-description-optimizer"
-version = "0.2.0"
+version = "0.2.1"
 description = "Optimize a Claude Code / Agent skill's description frontmatter for reliable triggering — no API key required."
 readme = "README.md"
 requires-python = ">=3.14"
