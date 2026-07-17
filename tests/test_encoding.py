@@ -309,8 +309,16 @@ class TestAsciiLocaleSubprocess:
             print("OK")
             """
         )
+        # Run the script from a UTF-8 *file*, not `python -c`: source files are always
+        # decoded as UTF-8 (PEP 3120) regardless of locale, whereas the `-c` argv is
+        # decoded with the locale codec -- under the forced ascii locale that fails to
+        # decode the non-ASCII script before it even runs (a harness limitation, not a
+        # product failure). The child still runs under the ascii locale, exercising the
+        # real write paths.
+        script_file = tmp_path / "child.py"
+        script_file.write_text(script, encoding="utf-8")
         result = subprocess.run(
-            [sys.executable, "-c", script],
+            [sys.executable, str(script_file)],
             capture_output=True,
             text=True,
             env=env,
