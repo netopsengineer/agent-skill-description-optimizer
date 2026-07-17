@@ -121,7 +121,7 @@ instead of skill-creator's `scripts/run_loop.py` — no API key required.
 Run before declaring any change complete; all must pass:
 
 ```bash
-uv sync
+uv sync --locked
 uv run pytest
 uv run pyright
 uv run ruff check .

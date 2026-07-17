@@ -68,12 +68,9 @@ repos:
         require_serial: true
 
   # -- Python related hooks ----------------------------------------------
-  - repo: https://github.com/asottile/pyupgrade
-    rev: 75992aaa40730136014f34227e0135f63fc951b4 # frozen: v3.21.2
-    hooks:
-      - id: pyupgrade
-        args: ["--py314-plus"]  # Set your project's minimum Python version to upgrade syntax accordingly
-
+  # Syntax upgrades (UP) are owned by ruff below, not a separate pyupgrade hook, so a
+  # single tool owns that gate (PY-PROJ-007: no overlapping tools). ruff infers the
+  # upgrade target from pyproject's requires-python (>=3.14).
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 2700fd5671c633760d912769c041bfcde2b9a01b # frozen: v0.15.22
     hooks:

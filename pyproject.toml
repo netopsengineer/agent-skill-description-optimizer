@@ -88,9 +88,18 @@ exclude_lines = [
 ]
 
 [tool.ruff.lint]
-# Layer flake8-bandit ("S") security checks onto ruff's own defaults (E4, E7, E9, F)
-# so the fast, always-on lint pass catches most of what a separate bandit run would.
-extend-select = ["S"]
+# Layer the standard lint families onto ruff's own defaults (E4, E7, E9, F): import
+# sorting (I), pyupgrade (UP), bugbear (B), simplify (SIM), comprehensions (C4),
+# flake8-pie (PIE), ruff's own rules (RUF), flake8-bandit security (S), and the logging
+# families (LOG, G). BLE keeps the intentional broad-except sites honest via their inline
+# `# noqa: BLE001`. UP lives here (not a separate pyupgrade hook) so a single tool owns
+# the syntax-upgrade gate -- no overlapping tools (PY-PROJ-007). ruff infers the upgrade
+# target from `requires-python` (>=3.14).
+extend-select = ["I", "UP", "B", "SIM", "C4", "PIE", "RUF", "S", "LOG", "G", "BLE"]
+# Narrow, project-specific ignores: the HTML report UI and prose intentionally use
+# typographic Unicode (en/em dashes, curly quotes, ✓/✗ result glyphs), so ruff's
+# ambiguous-character rules (strings/docstrings/comments) are false positives here.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert liberally (pytest idiom) and spawn real subprocesses to exercise the

@@ -11,10 +11,11 @@ import os
 import sys
 
 # Minimum supported runtime as a (major, minor) tuple. Held as a module-level constant
-# rather than an inline ``(3, 14)`` literal ON PURPOSE: ``pyupgrade --py314-plus`` treats
-# ``if sys.version_info < (3, 14):`` as statically dead and deletes it, which is exactly
-# what silently removed this guard before. Comparing against a name pyupgrade cannot
-# resolve keeps the block a genuine runtime guard that survives the hook.
+# rather than an inline ``(3, 14)`` literal ON PURPOSE: a version-upgrade linter (ruff's
+# ``UP036`` with an inferred 3.14 target, formerly the ``pyupgrade --py314-plus`` hook)
+# treats ``if sys.version_info < (3, 14):`` as statically dead and deletes it, which is
+# exactly what silently removed this guard before. Comparing against a name the linter
+# cannot resolve statically keeps the block a genuine runtime guard that survives the check.
 _MINIMUM_PYTHON = (3, 14)
 
 # Runtime-floor guard: enforce Python >=3.14 BEFORE importing the package, so a wrong

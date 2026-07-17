@@ -42,7 +42,7 @@ jobs:
       - name: Sync the environment
         env:
           UV_MALWARE_CHECK: "1"
-        run: uv sync
+        run: uv sync --locked
 
       - name: Run the full prek gate
         run: uv run prek run --all-files --show-diff-on-failure --color always

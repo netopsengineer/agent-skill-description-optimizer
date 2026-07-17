@@ -41,10 +41,14 @@ jobs:
         with:
           version: "0.11.29"
 
+      # --locked asserts uv.lock is already in sync with pyproject.toml and fails
+      # otherwise, so a dependency change that skips `uv lock` cannot merge. The gate
+      # CHECKS the committed lock; it never silently re-resolves it (bare `uv sync`
+      # would). See PY-CI-001 / PY-PROJ-008.
       - name: Sync the environment
         env:
           UV_MALWARE_CHECK: "1"
-        run: uv sync
+        run: uv sync --locked
 
       - name: Run the full prek gate
         run: uv run prek run --all-files --show-diff-on-failure --color always
@@ -77,7 +81,7 @@ jobs:
       - name: Sync the environment
         env:
           UV_MALWARE_CHECK: "1"
-        run: uv sync
+        run: uv sync --locked
 
       - name: uv audit (advisory scan of uv.lock)
         run: uv audit --preview-features audit
