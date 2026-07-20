@@ -296,10 +296,17 @@ def _load_eval_set(path: Path) -> list[EvalQuery]:
             that violates the contract.
     """
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         reason = exc.strerror or exc.__class__.__name__
         raise ValueError(f"Invalid eval set: cannot read {path}: {reason}") from exc
+    except UnicodeDecodeError as exc:
+        # The file was read with an explicit UTF-8 contract (never the host locale), so a
+        # non-UTF-8 eval file surfaces here as a UnicodeDecodeError (a ValueError, not an
+        # OSError). Map it to the same friendly precondition message so a stdout-parsing
+        # caller fails legibly rather than on a mid-run traceback. A separate clause -- not
+        # ``except (OSError, UnicodeDecodeError)`` -- because the two need different text.
+        raise ValueError(f"Invalid eval set: {path} is not valid UTF-8") from exc
     try:
         data: Any = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -646,15 +653,19 @@ def _propose_and_score(
     prompt = build_improver_prompt(
         inputs.name, best_desc, inputs.body, train_eval, prior_attempts
     )
-    (inputs.out / f"iter{it}_prompt.txt").write_text(prompt)
+    (inputs.out / f"iter{it}_prompt.txt").write_text(prompt, encoding="utf-8")
     proposal = _call_improver_with_retry(inputs, prompt, it, budget)
     cand = str(proposal["description"]).strip()
-    (inputs.out / f"iter{it}_proposal.json").write_text(json.dumps(proposal, indent=2))
+    (inputs.out / f"iter{it}_proposal.json").write_text(
+        json.dumps(proposal, indent=2), encoding="utf-8"
+    )
     logger.info("  rationale: %s", proposal.get("rationale", ""))
     cand_full = evaluate(queries, inputs.name, cand, inputs.config, verbose=False)
     cand_train = subset_result(cand_full, queries, train_idx, inputs.config.models)
     cand_test = subset_result(cand_full, queries, test_idx, inputs.config.models)
-    (inputs.out / f"iter{it}_eval.json").write_text(json.dumps(cand_full, indent=2))
+    (inputs.out / f"iter{it}_eval.json").write_text(
+        json.dumps(cand_full, indent=2), encoding="utf-8"
+    )
     label = f"ITER {it} (full)"
     if inputs.verbose:
         logger.info("%s", summarize_verbose(label, cand_full))
@@ -1018,7 +1029,7 @@ def _resolve_config(args: argparse.Namespace) -> tuple[str, EvalConfig]:
     improver_spec: str = args.improver_model or args.model or "opus"
     improver_model = MODEL_ALIASES.get(improver_spec, improver_spec)
     settings_json = (
-        json.dumps({"enabledPlugins": {p: False for p in args.disable_plugin}})
+        json.dumps({"enabledPlugins": dict.fromkeys(args.disable_plugin, False)})
         if args.disable_plugin
         else None
     )
@@ -1168,7 +1179,7 @@ def _write_placeholder_and_open(live_report_path: Path) -> None:
     """
     try:
         live_report_path.parent.mkdir(parents=True, exist_ok=True)
-        live_report_path.write_text(_PLACEHOLDER_HTML)
+        live_report_path.write_text(_PLACEHOLDER_HTML, encoding="utf-8")
     except OSError:
         logger.debug("could not write placeholder report", exc_info=True)
         return
@@ -1189,7 +1200,10 @@ def _write_html(path: Path, report: dict[str, Any], name: str, refresh: bool) ->
     """
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(generate_html(report, auto_refresh=refresh, skill_name=name))
+        path.write_text(
+            generate_html(report, auto_refresh=refresh, skill_name=name),
+            encoding="utf-8",
+        )
     except OSError:
         logger.debug("could not write HTML report to %s", path, exc_info=True)
 
@@ -1286,7 +1300,9 @@ def run(args: argparse.Namespace) -> None:
     )
 
     base_full = evaluate(queries, name, base_desc, config)
-    (out / "baseline.json").write_text(json.dumps(base_full, indent=2))
+    (out / "baseline.json").write_text(
+        json.dumps(base_full, indent=2), encoding="utf-8"
+    )
     if args.verbose:
         logger.info("%s", summarize_verbose("BASELINE (full)", base_full))
     else:
@@ -1380,9 +1396,11 @@ def run(args: argparse.Namespace) -> None:
         "best_test_score": best_test_score,
         "best_score": best_test_score if test_idx else best_train_score,
     }
-    (out / "report.json").write_text(json.dumps(report, indent=2))
+    (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     if results_dir is not None:
-        (results_dir / "results.json").write_text(json.dumps(report, indent=2))
+        (results_dir / "results.json").write_text(
+            json.dumps(report, indent=2), encoding="utf-8"
+        )
     logger.info("\n=== DONE ===")
     if test_idx:
         logger.info(

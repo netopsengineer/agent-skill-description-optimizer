@@ -480,7 +480,7 @@ def _write_transcript(log_path: Path | None, transcript: dict[str, Any]) -> None
     if log_path is None:
         return
     try:
-        log_path.write_text(json.dumps(transcript, indent=2))
+        log_path.write_text(json.dumps(transcript, indent=2), encoding="utf-8")
     except Exception:  # noqa: BLE001 - best-effort; must not replace the primary outcome
         logger.warning("Improver transcript write failed.")
 
@@ -629,7 +629,7 @@ def call_improver(
     except subprocess.TimeoutExpired as exc:
         transcript.setdefault("error", repr(exc))
         raise ImproverRetryableError("timeout", "Improver timed out") from exc
-    except Exception as exc:  # noqa: BLE001 - re-raised; only records a diagnostic note
+    except Exception as exc:  # re-raised below; only records a diagnostic note first
         transcript.setdefault("error", repr(exc))
         raise
     finally:

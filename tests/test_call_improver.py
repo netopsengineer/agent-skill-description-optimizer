@@ -1,19 +1,18 @@
 """Tests for ``call_improver`` output parsing, with ``subprocess.run`` mocked."""
 
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-import subprocess
-
 from skill_optimizer import call_improver
 from skill_optimizer.improver import (
+    _DECODER,  # pyright: ignore[reportPrivateUsage]
     ImproverFatalProcessError,
     ImproverRetryableError,
-    _DECODER,  # pyright: ignore[reportPrivateUsage]
     _LaunchBudget,  # pyright: ignore[reportPrivateUsage]
     _parse_improver_output,  # pyright: ignore[reportPrivateUsage]
     _parse_or_retryable,  # pyright: ignore[reportPrivateUsage]

@@ -45,7 +45,7 @@ def test_guard_exits_1_below_314_without_importing_package(
         "__file__": str(ENTRYPOINT),
     }
     with pytest.raises(SystemExit) as excinfo:
-        exec(code, module_globals)  # noqa: S102 - compiled entrypoint under test
+        exec(code, module_globals)  # compiled entrypoint under test
     assert excinfo.value.code == 1
     captured = capsys.readouterr()
     assert captured.out == ""  # empty stdout

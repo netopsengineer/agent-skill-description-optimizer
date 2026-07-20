@@ -1,5 +1,6 @@
 """Triggering evaluation: drive ``claude -p`` per query and aggregate results."""
 
+import contextlib
 import copy
 import json
 import logging
@@ -76,10 +77,8 @@ def _stream_events(
         if proc.poll() is not None and "\n" not in buffer:
             break
     if line := buffer.strip():
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             yield json.loads(line)
-        except json.JSONDecodeError:
-            pass
 
 
 def run_single_query(
@@ -123,7 +122,8 @@ def run_single_query(
         indented = "\n  ".join(description.split("\n"))
         (commands_dir / f"{cmd_name}.md").write_text(
             f"---\ndescription: |\n  {indented}\n---\n\n"
-            f"# {skill_name}\n\nThis skill handles: {description}\n"
+            f"# {skill_name}\n\nThis skill handles: {description}\n",
+            encoding="utf-8",
         )
         cmd = [
             claude_bin(),
@@ -305,8 +305,8 @@ def _rollup_stats(
     Returns:
         The aggregated :class:`EvalResult`.
     """
-    per_model_correct = {m: 0 for m in models}
-    per_model_total = {m: 0 for m in models}
+    per_model_correct = dict.fromkeys(models, 0)
+    per_model_total = dict.fromkeys(models, 0)
     conf = {m: {"tp": 0, "fp": 0, "tn": 0, "fn": 0} for m in models}
     total_errors = 0
     unjudged = 0
@@ -454,7 +454,7 @@ def evaluate(
             i, m = futures[fut]
             try:
                 result = fut.result()
-            except Exception:
+            except Exception:  # noqa: BLE001 - task boundary: logged and converted to None
                 logger.warning("query %d (%s) failed", i, m, exc_info=True)
                 result = None
             # A None probe is unjudgeable (timeout/CLI error): tally it separately and

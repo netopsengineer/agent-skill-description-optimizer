@@ -14,8 +14,8 @@ import pytest
 import skill_optimizer.cli as cli_module
 from skill_optimizer import EvalQuery, EvalResult, aggregate, stratified_split
 from skill_optimizer.cli import (
-    _LoopInputs,  # pyright: ignore[reportPrivateUsage]
     _load_eval_set,  # pyright: ignore[reportPrivateUsage]
+    _LoopInputs,  # pyright: ignore[reportPrivateUsage]
     _optimize,  # pyright: ignore[reportPrivateUsage]
     _validate_iterations,  # pyright: ignore[reportPrivateUsage]
     build_parser,
@@ -65,7 +65,7 @@ def _eval_result(
     ]
     return {
         "description": "d",
-        "per_model_accuracy": {mdl: rate for mdl in models},
+        "per_model_accuracy": dict.fromkeys(models, rate),
         "mean_accuracy": rate,
         "min_accuracy": rate,
         "per_query": per_query,
@@ -103,7 +103,7 @@ def _unjudged_eval_result(
     ]
     return {
         "description": "d",
-        "per_model_accuracy": {mdl: None for mdl in models},
+        "per_model_accuracy": dict.fromkeys(models),
         "mean_accuracy": 0.0,
         "min_accuracy": 0.0,
         "per_query": per_query,
@@ -472,7 +472,7 @@ def test_stdout_is_strict_superset_with_envelope(
     run(args)
     out = json.loads(capsys.readouterr().out)
     # "Remove nothing": every prior top-level key survives.
-    assert _PRIOR_STDOUT_KEYS <= set(out)
+    assert set(out) >= _PRIOR_STDOUT_KEYS
     # Additive skill-creator envelope is present.
     for key in (
         "exit_reason",
@@ -2129,7 +2129,7 @@ def test_run_missing_skill_md_exits(tmp_path: Path) -> None:
     args = build_parser().parse_args(
         ["--skill-path", str(tmp_path / "nope"), "--eval-set", str(tmp_path / "e.json")]
     )
-    with pytest.raises(SystemExit, match="No SKILL.md at"):
+    with pytest.raises(SystemExit, match=r"No SKILL.md at"):
         run(args)
 
 

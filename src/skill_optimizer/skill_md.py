@@ -55,7 +55,7 @@ def parse_skill_md(skill_md: Path) -> tuple[str, str, str]:
     Raises:
         ValueError: If the file has no ``---`` delimited YAML frontmatter.
     """
-    text = skill_md.read_text()
+    text = skill_md.read_text(encoding="utf-8")
     match = re.search(r"^---\n(.*?)\n---\n?(.*)$", text, re.DOTALL)
     if not match:
         raise ValueError(f"No YAML frontmatter in {skill_md}")
@@ -101,8 +101,8 @@ def write_description(skill_md: Path, new_description: str) -> None:
             backup is written before this check, so a failed write still leaves a
             ``.bak`` behind.
     """
-    text = skill_md.read_text()
-    skill_md.with_suffix(f"{skill_md.suffix}.bak").write_text(text)
+    text = skill_md.read_text(encoding="utf-8")
+    skill_md.with_suffix(f"{skill_md.suffix}.bak").write_text(text, encoding="utf-8")
     match = re.search(r"^---\n(.*?)\n---", text, re.DOTALL)
     if not match:
         raise ValueError(f"No frontmatter in {skill_md}")
@@ -120,4 +120,4 @@ def write_description(skill_md: Path, new_description: str) -> None:
         fm_without_desc + "\n" if fm_without_desc else ""
     ) + f"description: |\n  {folded}"
     new_text = text[: match.start(1)] + new_frontmatter + text[match.end(1) :]
-    skill_md.write_text(new_text)
+    skill_md.write_text(new_text, encoding="utf-8")

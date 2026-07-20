@@ -1,0 +1,22 @@
+# Machine-readable Modern Python standards state (PY-PROJ-011).
+#
+# Agent-only compliance state — NOT Python project metadata (that lives in
+# pyproject.toml) and NOT shipped in the wheel (the uv_build backend packages only
+# src/skill_optimizer). The companion review agent reads this file to validate the
+# recorded revision, profiles, source/test roots, and primary type checker, and to
+# detect drift on future runs.
+#
+# Every value below is evidence-backed:
+#   - profiles: a distributable, importable library (src/skill_optimizer ships py.typed
+#     and a public __all__) that is also a CLI (the `optimize-skill-description` console
+#     script whose stdout JSON and exit codes are a documented contract).
+#   - source-roots / test-roots: the real import and test roots (pyproject sets
+#     [tool.uv.build-backend] module-root = "src" and [tool.pytest] testpaths = tests).
+#   - type-checker: pyright, run in strict mode with a required zero-error result
+#     ([tool.pyright] typeCheckingMode = "strict").
+
+standard-version = "2026.07"
+profiles = ["library", "cli"]
+source-roots = ["src"]
+test-roots = ["tests"]
+type-checker = "pyright"
