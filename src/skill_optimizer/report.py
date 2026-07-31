@@ -212,10 +212,14 @@ def _row(
     cells = [
         f'            <tr class="{row_class}">\n',
         f"                <td>{h.get('iteration', '?')}</td>\n",
-        f'                <td><span class="score {_score_class(train_correct, train_runs)}">'
-        f"{train_correct}/{train_runs}</span></td>\n",
-        f'                <td><span class="score {_score_class(test_correct, test_runs)}">'
-        f"{test_correct}/{test_runs}</span></td>\n",
+        (
+            f'                <td><span class="score {_score_class(train_correct, train_runs)}">'
+            f"{train_correct}/{train_runs}</span></td>\n"
+        ),
+        (
+            f'                <td><span class="score {_score_class(test_correct, test_runs)}">'
+            f"{test_correct}/{test_runs}</span></td>\n"
+        ),
         f'                <td class="description">{html.escape(h.get("description", ""))}</td>\n',
     ]
     cells.extend(
@@ -258,36 +262,44 @@ def generate_html(
         f"    <title>{title_prefix}Skill Description Optimization</title>\n",
         f"    <style>{_CSS}    </style>\n</head>\n<body>\n",
         f"    <h1>{title_prefix}Skill Description Optimization</h1>\n",
-        '    <div class="explainer"><strong>Optimizing your skill’s '
-        "description.</strong> Each row is a description attempt. Query columns show "
-        "test cases: a green check means the skill triggered correctly (or correctly "
-        "stayed silent), a red cross means it got it wrong, a grey dash means the probe "
-        "was unjudgeable. The best-performing row is highlighted.</div>\n",
-        '    <div class="summary">\n'
-        f"        <p><strong>Original:</strong> {html.escape(str(data.get('original_description', 'N/A')))}</p>\n"
-        f'        <p class="best"><strong>Best:</strong> {html.escape(str(data.get("best_description", "N/A")))}</p>\n'
-        f"        <p><strong>Best Score:</strong> {data.get('best_score', 'N/A')} "
-        f"{'(test)' if best_test_score else '(train)'}</p>\n"
-        f"        <p><strong>Iterations:</strong> {data.get('iterations_run', 0)} | "
-        f"<strong>Train:</strong> {data.get('train_size', '?')} | "
-        f"<strong>Test:</strong> {data.get('test_size', '?')}</p>\n"
-        "    </div>\n",
-        '    <div class="legend">\n'
-        '        <span style="font-weight:600">Query columns:</span>\n'
-        '        <span class="legend-item"><span class="legend-swatch swatch-positive">'
-        "</span> Should trigger</span>\n"
-        '        <span class="legend-item"><span class="legend-swatch swatch-negative">'
-        "</span> Should NOT trigger</span>\n"
-        '        <span class="legend-item"><span class="legend-swatch swatch-train">'
-        "</span> Train</span>\n"
-        '        <span class="legend-item"><span class="legend-swatch swatch-test">'
-        "</span> Test</span>\n"
-        "    </div>\n",
-        '    <div class="table-container">\n    <table>\n        <thead>\n'
-        "            <tr>\n"
-        "                <th>Iter</th>\n                <th>Train</th>\n"
-        '                <th>Test</th>\n                <th class="query-col">'
-        "Description</th>\n",
+        (
+            '    <div class="explainer"><strong>Optimizing your skill’s '
+            "description.</strong> Each row is a description attempt. Query columns show "
+            "test cases: a green check means the skill triggered correctly (or correctly "
+            "stayed silent), a red cross means it got it wrong, a grey dash means the probe "
+            "was unjudgeable. The best-performing row is highlighted.</div>\n"
+        ),
+        (
+            '    <div class="summary">\n'
+            f"        <p><strong>Original:</strong> {html.escape(str(data.get('original_description', 'N/A')))}</p>\n"
+            f'        <p class="best"><strong>Best:</strong> {html.escape(str(data.get("best_description", "N/A")))}</p>\n'
+            f"        <p><strong>Best Score:</strong> {data.get('best_score', 'N/A')} "
+            f"{'(test)' if best_test_score else '(train)'}</p>\n"
+            f"        <p><strong>Iterations:</strong> {data.get('iterations_run', 0)} | "
+            f"<strong>Train:</strong> {data.get('train_size', '?')} | "
+            f"<strong>Test:</strong> {data.get('test_size', '?')}</p>\n"
+            "    </div>\n"
+        ),
+        (
+            '    <div class="legend">\n'
+            '        <span style="font-weight:600">Query columns:</span>\n'
+            '        <span class="legend-item"><span class="legend-swatch swatch-positive">'
+            "</span> Should trigger</span>\n"
+            '        <span class="legend-item"><span class="legend-swatch swatch-negative">'
+            "</span> Should NOT trigger</span>\n"
+            '        <span class="legend-item"><span class="legend-swatch swatch-train">'
+            "</span> Train</span>\n"
+            '        <span class="legend-item"><span class="legend-swatch swatch-test">'
+            "</span> Test</span>\n"
+            "    </div>\n"
+        ),
+        (
+            '    <div class="table-container">\n    <table>\n        <thead>\n'
+            "            <tr>\n"
+            "                <th>Iter</th>\n                <th>Train</th>\n"
+            '                <th>Test</th>\n                <th class="query-col">'
+            "Description</th>\n"
+        ),
         _column_headers(train_cols, False),
         _column_headers(test_cols, True),
         "            </tr>\n        </thead>\n        <tbody>\n",

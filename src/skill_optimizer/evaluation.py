@@ -454,7 +454,7 @@ def evaluate(
             i, m = futures[fut]
             try:
                 result = fut.result()
-            except Exception:  # noqa: BLE001 - task boundary: logged and converted to None
+            except Exception:  # task boundary: logged and converted to None
                 logger.warning("query %d (%s) failed", i, m, exc_info=True)
                 result = None
             # A None probe is unjudgeable (timeout/CLI error): tally it separately and

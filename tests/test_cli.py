@@ -1161,8 +1161,10 @@ _INVALID_HOLDOUT_CASES: list[tuple[str, str, str]] = [
     (
         "unsafe_high",
         "0.75",
-        "Invalid holdout split: positive class cannot retain a training query at "
-        "this holdout",
+        (
+            "Invalid holdout split: positive class cannot retain a training query at "
+            "this holdout"
+        ),
     ),
 ]
 

@@ -523,6 +523,9 @@ def _run_improver_subprocess(
         text=True,
         env=subprocess_env(),
         timeout=timeout,
+        # The caller classifies the exit status itself (a nonzero `claude` exit is the
+        # documented improver-fatal mode), so never raise CalledProcessError here.
+        check=False,
     )
 
 

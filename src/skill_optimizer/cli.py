@@ -1185,7 +1185,7 @@ def _write_placeholder_and_open(live_report_path: Path) -> None:
         return
     try:
         webbrowser.open(live_report_path.resolve().as_uri())
-    except Exception:  # noqa: BLE001 - no browser in headless/CI; never fatal
+    except Exception:  # no browser in headless/CI; never fatal
         logger.debug("could not open browser for report", exc_info=True)
 
 

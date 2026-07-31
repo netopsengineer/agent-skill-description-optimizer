@@ -57,7 +57,10 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.15.1",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.15.22",
+    # Must track the ruff-pre-commit hook rev in .pre-commit-config.yaml: the gate runs
+    # ruff twice (`uv run ruff check .` from this group, and the prek hook), and the two
+    # must agree on the rule set or the local and CI verdicts diverge (PY-CI-001).
+    "ruff>=0.16.1",
 ]
 
 [tool.pytest.ini_options]
@@ -88,18 +91,53 @@ exclude_lines = [
 ]
 
 [tool.ruff.lint]
-# Layer the standard lint families onto ruff's own defaults (E4, E7, E9, F): import
+# Layer the standard lint families onto ruff's own defaults, which as of ruff 0.16
+# are a broad curated set (413 rules) rather than the former E4/E7/E9/F core: import
 # sorting (I), pyupgrade (UP), bugbear (B), simplify (SIM), comprehensions (C4),
-# flake8-pie (PIE), ruff's own rules (RUF), flake8-bandit security (S), and the logging
-# families (LOG, G). BLE keeps the intentional broad-except sites honest via their inline
-# `# noqa: BLE001`. UP lives here (not a separate pyupgrade hook) so a single tool owns
-# the syntax-upgrade gate -- no overlapping tools (PY-PROJ-007). ruff infers the upgrade
-# target from `requires-python` (>=3.14).
-extend-select = ["I", "UP", "B", "SIM", "C4", "PIE", "RUF", "S", "LOG", "G", "BLE"]
+# flake8-pie (PIE), ruff's own rules (RUF), flake8-bandit security (S), the logging
+# families (LOG, G), and perflint (PERF). BLE keeps the intentional broad-except sites
+# honest. ASYNC and DTZ arrive via ruff's 0.16 defaults, so they are not named here.
+#
+# E4, E7, E9, and F are named DELIBERATELY rather than inherited from ruff's defaults.
+# ruff 0.16 dropped 18 pycodestyle/pyflakes rules from those defaults (E401, E402,
+# E701-E703, E711-E714, E721, E731, E741-E743, F403, F405, F406, F722), which silently
+# weakened this gate on upgrade. Selecting the FAMILIES pins the floor by intent, not by
+# rule code: every member is enforced regardless of how ruff later re-editorializes its
+# default set. Do not expand this into a list of individual codes -- codes get renamed
+# and removed (E999 already was), families do not.
+#
+# UP lives here (not a separate pyupgrade hook) so a single tool owns the syntax-upgrade
+# gate -- no overlapping tools (PY-PROJ-007). ruff infers the upgrade target from
+# `requires-python` (>=3.14).
+extend-select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "C4",
+  "PIE",
+  "RUF",
+  "S",
+  "LOG",
+  "G",
+  "PERF",
+  "BLE",
+]
 # Narrow, project-specific ignores: the HTML report UI and prose intentionally use
 # typographic Unicode (en/em dashes, curly quotes, ✓/✗ result glyphs), so ruff's
 # ambiguous-character rules (strings/docstrings/comments) are false positives here.
-ignore = ["RUF001", "RUF002", "RUF003"]
+#
+# TRY004 (prefer TypeError for an invalid-type guard) is ignored repo-wide: the eval-set
+# and holdout validators raise a single documented ValueError family carrying the
+# `Invalid eval set: ...` / `Invalid holdout split: ...` text that AGENTS.md's
+# Preconditions table, `_load_eval_set`'s callers (`except ValueError`), and the
+# `pytest.raises(ValueError, match=...)` suite all depend on. Splitting those guards
+# into TypeError would break that published precondition contract for a style gain.
+ignore = ["RUF001", "RUF002", "RUF003", "TRY004"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert liberally (pytest idiom) and spawn real subprocesses to exercise the
