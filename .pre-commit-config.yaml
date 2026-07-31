@@ -58,7 +58,7 @@ repos:
 
   # Useful if you have hooks with `additional_dependencies` that need to be kept up to date.
   - repo: https://github.com/pre-commit/sync-pre-commit-deps
-    rev: 0860f48ea6ee50a41d103560604044a7396d92b2 # frozen: v0.0.4
+    rev: 497f8ebf9d58162bb5898e3973a633d31d511169 # frozen: v0.0.5
     hooks:
       - id: sync-pre-commit-deps
 
@@ -75,7 +75,7 @@ repos:
 
   # requires .markdownlint-cli2.jsonc at the root of the repository
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: 06f92c99e930c11230426b5edd775021d25e08a8 # frozen: v0.23.1
+    rev: b82a6c8896e491b9cb377a99ff3412131920681b # frozen: v0.23.2
     hooks:
       - id: markdownlint-cli2
         args: ["--config", ".markdownlint-cli2.jsonc", "--fix"]
