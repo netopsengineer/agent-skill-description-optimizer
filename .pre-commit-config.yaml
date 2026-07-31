@@ -24,6 +24,20 @@ exclude: |
     justfile|
   )$
 
+# Make `prek autoupdate` behave exactly like Dependabot's pre-commit ecosystem:
+# rewrite `rev` to the new immutable commit SHA and refresh the `# frozen: <tag>`
+# comment. prek's `--freeze` defaults to FALSE, so without this a bare
+# `prek autoupdate` would replace every SHA below with a mutable tag -- including
+# repos whose version did not change -- silently undoing the immutable-revision
+# pinning this file relies on (PY-CI-003).
+#
+# Trade-off: vanilla pre-commit does not know this key and prints
+# `[WARNING] Unexpected key(s) present at root: update` on every invocation. It is
+# cosmetic only -- `pre-commit validate-config` still exits 0 and hooks still run.
+# Drop this block and pass `prek autoupdate --freeze` by hand to silence it.
+update:
+  freeze: true
+
 repos:
   # -- General file hygiene ----------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -89,7 +103,7 @@ repos:
         types_or: [python, pyi, jupyter, markdown]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1 # frozen: v0.9.1
+    rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1 # frozen: 0.9.1
     hooks:
       - id: pydoclint
         args: ["--config", "pyproject.toml"]
