@@ -15,7 +15,7 @@
 #   - type-checker: pyright, run in strict mode with a required zero-error result
 #     ([tool.pyright] typeCheckingMode = "strict").
 
-standard-version = "2026.07"
+standard-version = "2026.08.1"
 profiles = ["library", "cli"]
 source-roots = ["src"]
 test-roots = ["tests"]
