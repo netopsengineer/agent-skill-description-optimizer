@@ -107,7 +107,6 @@ def test_run_query_with_retry_returns_none_when_all_unjudgeable(
 
     def always_none(*_: object, **__: object) -> None:
         calls["n"] += 1
-        return None
 
     monkeypatch.setattr("skill_optimizer.evaluation.run_single_query", always_none)
     assert run_query_with_retry("q", "s", "d", "m", 5, None, retries=2) is None

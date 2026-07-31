@@ -35,7 +35,7 @@ if sys.version_info < _MINIMUM_PYTHON:
 # installed (e.g. editable via ``uv sync``) — the first resolvable entry wins.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-from skill_optimizer import (  # noqa: E402 - must follow the runtime-floor guard
+from skill_optimizer import (
     IMPROVER_TEMPLATE,
     MODEL_ALIASES,
     EvalConfig,
