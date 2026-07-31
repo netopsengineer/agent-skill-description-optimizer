@@ -136,12 +136,21 @@ branch is either exercised or covered by a justified exclusion in `[tool.coverag
 exclude_lines` — never a bare pragma. Use `uv run pytest --no-cov` for a partial
 file/selector run where a sub-100 result is expected.
 
-`ruff check .` includes flake8-bandit (`S`) rules (`[tool.ruff.lint] extend-select`);
-`bandit` itself still runs separately (also wired as a pre-commit/prek hook) because its
-`S404`-equivalent check (`B404`, flagging the bare `import subprocess`) needs ruff's
-unstable `--preview` flag to reproduce — everything else the two tools agree on. Tests
-are exempted from both (assert is normal pytest idiom, and integration tests spawn real
-subprocesses per the Invoke forms above) via `per-file-ignores`/`exclude_dirs`.
+`ruff check .` includes flake8-bandit (`S`) rules (`[tool.ruff.lint] extend-select`).
+`bandit` still runs separately (also wired as a pre-commit/prek hook) because it owns a
+distinct gate: of its 75 tests, 4 have no ruff `S` equivalent. Those are `B613` (trojansource:
+bidirectional-Unicode attack detection), `B614` (unsafe `torch.load`), `B615` (unsafe
+Hugging Face Hub download), and `B703` (Django `mark_safe` XSS). Only `B613` can fire in
+this codebase; the other three are framework-specific and inert here. The remaining 71
+tests overlap ruff, and 2 ruff rules (`S320`, `S410`) have no bandit counterpart.
+
+`B404` is NOT the reason: it exists in both tools, ruff's `S404` is preview-gated off,
+and `[tool.bandit] skips` disables bandit's copy deliberately (it fires on the bare
+`import subprocess` with no call-site context; `S603`/`B603` still review each real call
+site). Neither tool checks it, by design.
+
+Tests are exempted from both (assert is normal pytest idiom, and integration tests spawn
+real subprocesses per the Invoke forms above) via `per-file-ignores`/`exclude_dirs`.
 
 ## Packaging invariants
 
