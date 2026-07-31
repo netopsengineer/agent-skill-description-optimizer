@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Entry point / compatibility shim for the ``skill_optimizer`` package.
 
 The implementation lives in the :mod:`skill_optimizer` package under ``src/``; this

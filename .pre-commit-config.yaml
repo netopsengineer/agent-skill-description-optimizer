@@ -24,6 +24,20 @@ exclude: |
     justfile|
   )$
 
+# Make `prek autoupdate` behave exactly like Dependabot's pre-commit ecosystem:
+# rewrite `rev` to the new immutable commit SHA and refresh the `# frozen: <tag>`
+# comment. prek's `--freeze` defaults to FALSE, so without this a bare
+# `prek autoupdate` would replace every SHA below with a mutable tag -- including
+# repos whose version did not change -- silently undoing the immutable-revision
+# pinning this file relies on (PY-CI-003).
+#
+# Trade-off: vanilla pre-commit does not know this key and prints
+# `[WARNING] Unexpected key(s) present at root: update` on every invocation. It is
+# cosmetic only -- `pre-commit validate-config` still exits 0 and hooks still run.
+# Drop this block and pass `prek autoupdate --freeze` by hand to silence it.
+update:
+  freeze: true
+
 repos:
   # -- General file hygiene ----------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -44,7 +58,7 @@ repos:
 
   # Useful if you have hooks with `additional_dependencies` that need to be kept up to date.
   - repo: https://github.com/pre-commit/sync-pre-commit-deps
-    rev: 0860f48ea6ee50a41d103560604044a7396d92b2 # frozen: v0.0.4
+    rev: 497f8ebf9d58162bb5898e3973a633d31d511169 # frozen: v0.0.5
     hooks:
       - id: sync-pre-commit-deps
 
@@ -61,7 +75,7 @@ repos:
 
   # requires .markdownlint-cli2.jsonc at the root of the repository
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: 534166213006ec869b773b7ed8c6ebeaad1165d0 # frozen: v0.23.0
+    rev: b82a6c8896e491b9cb377a99ff3412131920681b # frozen: v0.23.2
     hooks:
       - id: markdownlint-cli2
         args: ["--config", ".markdownlint-cli2.jsonc", "--fix"]
@@ -72,16 +86,24 @@ repos:
   # single tool owns that gate (PY-PROJ-007: no overlapping tools). ruff infers the
   # upgrade target from pyproject's requires-python (>=3.14).
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 2700fd5671c633760d912769c041bfcde2b9a01b # frozen: v0.15.22
+    rev: 39d9ac5938dadb73df0564a45f163e25ff9fa6e2 # frozen: v0.16.1
     hooks:
-      # Run the linter.
+      # Run the linter. Upstream types_or is [python, pyi, jupyter], which matches
+      # `ruff check`'s own scope: it does not lint Python inside Markdown fences
+      # ("No Python files found" on a .md path), so no override is needed here.
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
-      # Run the formatter.
+      # Run the formatter. ruff 0.16 formats Python code blocks inside Markdown by
+      # default, but the upstream hook still selects only [python, pyi, jupyter] --
+      # so `ruff format .` locally covered 11 more files than this hook did. Adding
+      # markdown makes the hook's file set match the direct command's (PY-CI-001:
+      # same result locally and in CI). No writer conflict: markdownlint-cli2 and
+      # markdown-table-formatter own document structure, ruff owns fence interiors.
       - id: ruff-format
+        types_or: [python, pyi, jupyter, markdown]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1 # frozen: v0.9.1
+    rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1 # frozen: 0.9.1
     hooks:
       - id: pydoclint
         args: ["--config", "pyproject.toml"]
@@ -132,6 +154,6 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: 64a97fb7fa63188393d3215c6e312f5f9c6d0f78 # frozen: v1.27.0
+    rev: 067260dc5fe6ea86b7551bfd6f8b3ba4e6c93129 # frozen: v1.28.0
     hooks:
       - id: zizmor
