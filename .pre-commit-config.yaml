@@ -74,11 +74,19 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 39d9ac5938dadb73df0564a45f163e25ff9fa6e2 # frozen: v0.16.1
     hooks:
-      # Run the linter.
+      # Run the linter. Upstream types_or is [python, pyi, jupyter], which matches
+      # `ruff check`'s own scope: it does not lint Python inside Markdown fences
+      # ("No Python files found" on a .md path), so no override is needed here.
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
-      # Run the formatter.
+      # Run the formatter. ruff 0.16 formats Python code blocks inside Markdown by
+      # default, but the upstream hook still selects only [python, pyi, jupyter] --
+      # so `ruff format .` locally covered 11 more files than this hook did. Adding
+      # markdown makes the hook's file set match the direct command's (PY-CI-001:
+      # same result locally and in CI). No writer conflict: markdownlint-cli2 and
+      # markdown-table-formatter own document structure, ruff owns fence interiors.
       - id: ruff-format
+        types_or: [python, pyi, jupyter, markdown]
 
   - repo: https://github.com/jsh9/pydoclint
     rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1 # frozen: v0.9.1
