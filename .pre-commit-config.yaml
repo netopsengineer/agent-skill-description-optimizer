@@ -61,7 +61,7 @@ repos:
 
   # requires .markdownlint-cli2.jsonc at the root of the repository
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: 534166213006ec869b773b7ed8c6ebeaad1165d0 # frozen: v0.23.0
+    rev: 06f92c99e930c11230426b5edd775021d25e08a8 # frozen: v0.23.1
     hooks:
       - id: markdownlint-cli2
         args: ["--config", ".markdownlint-cli2.jsonc", "--fix"]
@@ -72,7 +72,7 @@ repos:
   # single tool owns that gate (PY-PROJ-007: no overlapping tools). ruff infers the
   # upgrade target from pyproject's requires-python (>=3.14).
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 2700fd5671c633760d912769c041bfcde2b9a01b # frozen: v0.15.22
+    rev: cb8c523fd4835aba42af70f4cad5568db4df0b6c # frozen: v0.16.0
     hooks:
       # Run the linter.
       - id: ruff-check
@@ -132,6 +132,6 @@ repos:
       - id: actionlint
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: 64a97fb7fa63188393d3215c6e312f5f9c6d0f78 # frozen: v1.27.0
+    rev: 067260dc5fe6ea86b7551bfd6f8b3ba4e6c93129 # frozen: v1.28.0
     hooks:
       - id: zizmor
