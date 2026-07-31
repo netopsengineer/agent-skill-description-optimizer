@@ -64,14 +64,24 @@ repos:
 
   # -- Prose related hooks -----------------------------------------------
 
-  # requires npx which is available with nodejs
+  # Hermetic node env managed by the hook runner, NOT `npx -y` at run time. The npx
+  # form installed an unpinned copy into the shared ~/.npm/_npx cache on every run,
+  # and concurrent installs raced it: CI failed with `ENOTEMPTY ... rmdir
+  # .../lru-cache/...` followed by `Cannot find module .../cliPrettify.js`, while every
+  # other hook passed. `language: node` + a pinned additional_dependencies resolves the
+  # package once at env-setup time into an isolated prefix, so the gate is deterministic
+  # and no longer depends on shared mutable npm state (PY-CI-001). require_serial keeps
+  # a single process even when the runner batches files, matching markdownlint-cli2
+  # below. sync-pre-commit-deps keeps the pinned version honest.
   - repo: local
     hooks:
       - id: markdown-table-formatter
         name: markdown-table-formatter
-        language: system
-        entry: npx -y markdown-table-formatter
+        language: node
+        entry: markdown-table-formatter
+        additional_dependencies: ["markdown-table-formatter@1.7.0"]
         types: [markdown]
+        require_serial: true
 
   # requires .markdownlint-cli2.jsonc at the root of the repository
   - repo: https://github.com/DavidAnson/markdownlint-cli2
