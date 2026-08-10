@@ -3,6 +3,7 @@ name: Dependabot auto-merge
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: read
@@ -12,16 +13,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Enable squash auto-merge on Dependabot PRs. GitHub's --auto flag holds the merge
-  # until the required Validate checks pass and the ruleset is satisfied, so no
-  # wait-for-CI logic is needed here. Uses GITHUB_TOKEN (no App key on Dependabot
-  # events). All update types (incl. majors) auto-merge — CI is the sole gate.
+  # Approve and enable squash auto-merge only for Dependabot PRs created or updated
+  # by a trusted automation sender. A human push to a Dependabot branch dismisses the
+  # stale approval and fails this sender guard, so it cannot inherit bot approval.
+  # GitHub's --auto flag then waits for every ruleset requirement, including the
+  # required Validate checks. Repository prerequisite: Settings > Actions > General >
+  # Workflow permissions > Allow GitHub Actions to create and approve pull requests.
   auto-merge:
     name: auto-merge
     runs-on: ubuntu-latest
     if: >-
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.repository == github.event.pull_request.head.repo.full_name
+      github.event.pull_request.user.id == 49699333 &&
+      github.repository == github.event.pull_request.head.repo.full_name &&
+      (github.event.sender.id == 49699333 ||
+       github.event.sender.id == 305056826)
     permissions:
       contents: write
       pull-requests: write
@@ -36,6 +41,18 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98  # v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve the current Dependabot revision
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          jq -nc --arg commit_id "$HEAD_SHA" \
+            '{event: "APPROVE", commit_id: $commit_id,
+              body: "Approved automatically for a trusted Dependabot revision."}' \
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input -
 
       - name: Enable auto-merge (squash)
         env:
