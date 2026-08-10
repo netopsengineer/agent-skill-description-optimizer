@@ -55,9 +55,10 @@ on four automation behaviors:
   [`CHANGELOG.md`](CHANGELOG.md), tag, and cut a GitHub Release. Publishing to PyPI (OIDC
   trusted publishing with PEP 740 attestations) is gated behind the `PUBLISH_TO_PYPI` repo
   variable; while it is off, the release path still builds and validates the artifact.
-- **Dependabot** (`.github/dependabot.yml`) opens grouped, cooldown-gated PRs daily for
-  three ecosystems: `uv` dev-group tools (including the `prek` runner), `pre-commit` hook
-  revisions, and `github-actions` pins.
+- **Dependabot** (`.github/dependabot.yml`) opens cooldown-gated PRs daily for three
+  ecosystems: grouped `uv` dev tools, grouped `pre-commit` hook revisions, and grouped
+  `github-actions` pins. `uv-build` stays in its own PR because Dependabot cannot refresh
+  its build-system range reliably inside a group.
 - **Dependabot auto-merge** (`.github/workflows/dependabot-auto-merge.yml`) supplies the
   required approval only for a trusted Dependabot revision, then squash-merges it once
   Validate is green. If Validate fails on a bot PR with a mechanically fixable problem,
