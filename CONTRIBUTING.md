@@ -41,12 +41,14 @@ That covers lint, format, type-check, tests, secret scanning, and workflow secur
 
 ## CI/CD and the release process
 
-CI is defined entirely under [`.github/`](.github/). The pipeline is autonomous - there is
-no human review gate - and rests on four automation behaviors:
+CI is defined entirely under [`.github/`](.github/). Dependency maintenance and releases
+are autonomous; human-authored PRs retain a one-approval review gate. The pipeline rests
+on four automation behaviors:
 
-- **Validate** (`.github/workflows/validate.yml`) is the sole required status check. On
-  every PR and every push to `main` it runs the full `prek` gate, a dependency-advisory
-  scan (`uv audit` + OSV-Scanner), and the Conventional-Commit PR-title lint.
+- **Validate** (`.github/workflows/validate.yml`) owns the three required check contexts:
+  `gate`, `deps-security`, and `pr-title`. On every PR and every push to `main` it runs the
+  full `prek` gate, a dependency-advisory scan (`uv audit` + OSV-Scanner), and the
+  Conventional-Commit PR-title lint.
 - **Release** (`.github/workflows/release.yml`) runs on merges to `main`. It uses
   [python-semantic-release](https://python-semantic-release.readthedocs.io/) to read the
   Conventional-Commit history, bump the static `project.version`, update
@@ -56,11 +58,12 @@ no human review gate - and rests on four automation behaviors:
 - **Dependabot** (`.github/dependabot.yml`) opens grouped, cooldown-gated PRs daily for
   three ecosystems: `uv` dev-group tools (including the `prek` runner), `pre-commit` hook
   revisions, and `github-actions` pins.
-- **Dependabot auto-merge** (`.github/workflows/dependabot-auto-merge.yml`) squash-merges
-  a Dependabot PR automatically once Validate is green. If Validate fails on a bot PR with
-  a mechanically fixable problem, **auto-fix** (`.github/workflows/auto-fix.yml`) refreshes
-  the lockfile, applies every autofix hook, and pushes the result back so the checks re-run
-    - no LLM, purely mechanical.
+- **Dependabot auto-merge** (`.github/workflows/dependabot-auto-merge.yml`) supplies the
+  required approval only for a trusted Dependabot revision, then squash-merges it once
+  Validate is green. If Validate fails on a bot PR with a mechanically fixable problem,
+  **auto-fix** (`.github/workflows/auto-fix.yml`) refreshes the lockfile, applies every
+  autofix hook, and pushes the result back so the checks re-run - no LLM, purely
+  mechanical.
 
 The configuration mirrors the local gate exactly, so "green locally" and "green in CI" mean
 the same thing. For the agent-facing execution contract, see `AGENTS.md`.

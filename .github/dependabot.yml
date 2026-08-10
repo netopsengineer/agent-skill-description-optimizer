@@ -1,7 +1,8 @@
 ---
-# Dependabot configuration — three ecosystems, one grouped PR each.
-# Auto-merge (dependabot-auto-merge.yml) squash-merges these once the
-# Validate gate is green; auto-fix.yml mechanically repairs lint-only failures.
+# Dependabot configuration: three ecosystems, one grouped PR each.
+# Auto-merge (dependabot-auto-merge.yml) supplies the ruleset's guarded bot approval
+# and squash-merges after Validate is green. Human-authored PRs still require human
+# approval. auto-fix.yml mechanically repairs lint-only failures.
 # Non-releasing commit prefixes (chore/ci) so a merged bump never cuts a release.
 version: 2
 
