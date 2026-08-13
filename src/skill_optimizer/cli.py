@@ -784,6 +784,40 @@ def _log_selection_mean(
     )
 
 
+def _log_early_exit(
+    train_passed: int, has_holdout: bool, best_test_eval: EvalResult
+) -> None:
+    """Log the train-only early exit, warning when the holdout is not clean.
+
+    The stop criterion reads the training subset only, so a clean train sweep can sit
+    beside held-out misses. The warning states the held-out mean in the same breath as
+    the exit rather than leaving it to be inferred from the final score line, which is
+    the failure this exists to prevent. Emitted at warning level only when a holdout
+    exists and its mean is below 1.0.
+
+    Args:
+        train_passed: Number of training queries that passed.
+        has_holdout: Whether a held-out set exists.
+        best_test_eval: The running best's held-out view (an empty result with no
+            holdout, in which case no warning is emitted).
+    """
+    logger.info("  all %d train queries pass; stopping early.", train_passed)
+    if not has_holdout:
+        return
+    test_mean = best_test_eval["mean_accuracy"]
+    if test_mean >= 1.0:
+        return
+    # Same value the final "Best held-out mean" line reports: `best` is not mutated
+    # between this check and that read, so the two can never disagree.
+    logger.warning(
+        "  NOTE: early exit used a train-set criterion. The held-out mean is %.3f (%s),"
+        " so the holdout is NOT clean. Re-check with a different --seed before trusting"
+        " this description.",
+        test_mean,
+        _score_str(best_test_eval["per_query"]),
+    )
+
+
 def _consider_candidate(
     scored: tuple[str, dict[str, Any], EvalResult, EvalResult, EvalResult],
     it: int,
@@ -880,9 +914,8 @@ def _run_improve_loop(
             pq["all_pass"] is True for pq in train_eval["per_query"]
         ):
             exit_reason = f"all_passed (iteration {it})"
-            logger.info(
-                "  all %d train queries pass; stopping early.",
-                len(train_eval["per_query"]),
+            _log_early_exit(
+                len(train_eval["per_query"]), ctx.has_holdout, best.test_eval
             )
             break
         # This slot is entered: count it before the first outer attempt, so the live

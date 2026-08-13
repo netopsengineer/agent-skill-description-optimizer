@@ -22,6 +22,9 @@ from skill_optimizer.cli import (
     main,
     run,
 )
+from skill_optimizer.evaluation import (
+    _rollup_stats,  # pyright: ignore[reportPrivateUsage]
+)
 from skill_optimizer.improver import ImproverFatalProcessError, ImproverRetryableError
 from skill_optimizer.models import ConfusionMatrix, EvalConfig, PerQuery
 
@@ -113,6 +116,34 @@ def _unjudged_eval_result(
         "confusion": _cm(),
         "per_model_confusion": {mdl: _cm() for mdl in models},
     }
+
+
+def _mixed_eval_result(
+    eval_set: list[EvalQuery], models: tuple[str, ...], passing: set[int]
+) -> EvalResult:
+    # Only the queries at `passing` pass. Rolled up through the production
+    # `_rollup_stats` so the derived means match what `subset_result` recomputes for
+    # the train/test views rather than duplicating that arithmetic here.
+    per_query: list[PerQuery] = [
+        {
+            "index": i,
+            "query": q["query"],
+            "should_trigger": q["should_trigger"],
+            "models": {
+                mdl: {
+                    "trigger_rate": 1.0 if i in passing else 0.0,
+                    "pass": i in passing,
+                    "triggers": 3 if i in passing else 0,
+                    "runs": 3,
+                    "errors": 0,
+                }
+                for mdl in models
+            },
+            "all_pass": i in passing,
+        }
+        for i, q in enumerate(eval_set)
+    ]
+    return _rollup_stats("d", per_query, models)
 
 
 def _stub_eval_all_pass(
@@ -213,8 +244,12 @@ def test_model_shorthand_sets_eval_and_improver(
 
 
 def test_early_exit_when_all_train_pass(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    caplog.set_level(logging.WARNING)
     skill, eval_file = _setup(tmp_path)
     monkeypatch.setattr("skill_optimizer.cli.evaluate", _stub_eval_all_pass)
     monkeypatch.setattr("skill_optimizer.cli.call_improver", _no_improver)
@@ -233,6 +268,93 @@ def test_early_exit_when_all_train_pass(
     run(args)  # _no_improver raises if the loop fails to exit early
     out = json.loads(capsys.readouterr().out)
     assert out["best_description"] == "original desc"
+    # A clean holdout (every query passes) must not warn: the early exit carries no
+    # caveat when the held-out mean is already 1.0.
+    assert out["best_test_mean"] == 1.0
+    assert "holdout is NOT clean" not in caplog.text
+
+
+def test_early_exit_warns_when_holdout_not_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A train-only early exit beside a dirty holdout must say so at warning level."""
+    caplog.set_level(logging.WARNING)
+    skill, eval_file = _setup(tmp_path)
+    queries = _load_eval_set(eval_file)
+    train_idx, test_idx = stratified_split(queries, 0.4, seed=42)
+    # Assert the split shape the fixture below depends on, so a future change to
+    # stratified_split fails here loudly instead of silently skipping the warn branch.
+    assert len(train_idx) == 2
+    assert len(test_idx) == 2
+    # Every train query passes (forcing the early exit) and exactly one of the two
+    # held-out queries fails, so the held-out mean lands at 0.5, not 1.0.
+    passing = {*train_idx, test_idx[1]}
+
+    def fake_eval(
+        eval_set: list[EvalQuery],
+        name: Any,
+        description: Any,
+        config: Any,
+        *,
+        verbose: bool = True,
+    ) -> EvalResult:
+        return _mixed_eval_result(eval_set, config.models, passing)
+
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", fake_eval)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", _no_improver)
+    args = build_parser().parse_args(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+            "--iterations",
+            "3",
+        ]
+    )
+    run(args)  # _no_improver raises if the loop fails to exit early
+    out = json.loads(capsys.readouterr().out)
+    assert out["exit_reason"] == "all_passed (iteration 1)"
+    assert out["best_test_mean"] == 0.5
+    # The warned number is the same one the final "Best held-out mean" line reports.
+    assert "the held-out mean is 0.500 (1/2)" in caplog.text.lower()
+    assert "holdout is NOT clean" in caplog.text
+
+
+def test_early_exit_without_holdout_does_not_warn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """With --test-frac 0 there is no held-out mean to qualify the early exit."""
+    caplog.set_level(logging.WARNING)
+    skill, eval_file = _setup(tmp_path)
+    monkeypatch.setattr("skill_optimizer.cli.evaluate", _stub_eval_all_pass)
+    monkeypatch.setattr("skill_optimizer.cli.call_improver", _no_improver)
+    args = build_parser().parse_args(
+        [
+            "--skill-path",
+            str(skill),
+            "--eval-set",
+            str(eval_file),
+            "--out",
+            str(tmp_path / "out"),
+            "--iterations",
+            "3",
+            "--test-frac",
+            "0",
+        ]
+    )
+    run(args)  # _no_improver raises if the loop fails to exit early
+    out = json.loads(capsys.readouterr().out)
+    assert out["best_test_mean"] is None
+    assert "holdout is NOT clean" not in caplog.text
 
 
 def test_iterates_and_prints_best_description(
