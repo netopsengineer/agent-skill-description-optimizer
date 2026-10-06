@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -188,3 +189,17 @@ raise SystemExit(int(os.environ["OSV_EXIT"]))
         assert summary.read_text(encoding="utf-8").count("ACCEPTED RISK") == 2
     if scenario == "clean":
         assert "ACCEPTED RISK" not in summary.read_text(encoding="utf-8")
+
+
+def test_scanner_uses_the_official_digest_pinned_native_entrypoint() -> None:
+    dockerfile = (ROOT / ".github/security-scanner/Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    instructions = [
+        line for line in dockerfile.splitlines() if line and not line.startswith("#")
+    ]
+    assert len(instructions) == 1
+    assert re.fullmatch(
+        r"FROM ghcr\.io/google/osv-scanner:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}",
+        instructions[0],
+    )
