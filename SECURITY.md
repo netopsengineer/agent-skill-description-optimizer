@@ -23,3 +23,12 @@ the automation itself (workflow token scope, SHA-pinning, OIDC publishing) are i
 
 Only the latest released version is supported. Fixes ship as new releases rather than as
 patches to older versions.
+
+## Dependency advisory policy
+
+Required PR and weekly scans use an empty-by-default, exact-scope no-fix policy.
+An exception requires explicit maintainer risk acceptance for a named advisory,
+locked package/version, rationale, upstream evidence, and a UTC expiry. New,
+malformed, unrelated, fixable, or expired findings remain blocking, and raw scanner
+results stay visible. See [the contributor guide](CONTRIBUTING.md#temporary-dependency-risk-acceptance)
+for the contract and reproduction commands.
