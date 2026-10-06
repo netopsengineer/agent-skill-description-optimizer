@@ -55,7 +55,7 @@ on four automation behaviors:
   [`CHANGELOG.md`](CHANGELOG.md), tag, and cut a GitHub Release. Publishing to PyPI (OIDC
   trusted publishing with PEP 740 attestations) is gated behind the `PUBLISH_TO_PYPI` repo
   variable; while it is off, the release path still builds and validates the artifact.
-- **Dependabot** (`.github/dependabot.yml`) opens cooldown-gated PRs daily for three
+- **Dependabot** (`.github/dependabot.yml`) opens cooldown-gated PRs daily for four
   ecosystems: grouped `uv` dev tools, grouped `pre-commit` hook revisions, and grouped
   `github-actions` pins. `uv-build` stays in its own PR because Dependabot cannot refresh
   its build-system range reliably inside a group.
@@ -68,3 +68,58 @@ on four automation behaviors:
 
 The configuration mirrors the local gate exactly, so "green locally" and "green in CI" mean
 the same thing. For the agent-facing execution contract, see `AGENTS.md`.
+
+## Temporary dependency risk acceptance
+
+Both required dependency scanners use the same empty-by-default policy in
+[`.github/advisory-exceptions.json`](.github/advisory-exceptions.json). This is an
+escape hatch for an explicitly reviewed, short-lived **no-fix** case. Prefer a
+canonical dependency or lockfile update whenever a fixed release is available.
+Neither Dependabot nor the mechanical auto-fixer may create or extend an acceptance.
+The privileged auto-fix consumer prevents direct protected-file writes and verifies paths against the actual PR file tree
+before obtaining its write token, and refuses policy, scanner, workflow, packaging,
+new-file, symlink, or mode changes. Ordinary existing-file formatting and lockfile
+repairs remain eligible. This guard does not prove that arbitrary proposed source
+changes are mechanically generated. Both PR and weekly dependency audits run in
+a separate fresh job from tests and pre-commit hooks.
+
+Each entry must identify one exact GHSA advisory, `PyPI` package, and version
+already in `uv.lock`, plus an exclusive UTC `expiresAt`, `reason`, `noFixReason`,
+and a credential-free HTTPS `upstream` reference. Accepting a vulnerability is a
+maintainer risk decision; a green accepted-risk result does not mean it is fixed.
+The current policy contains no accepted risks.
+
+The PR and weekly checks run `scripts/audit-dependencies.sh`:
+
+1. Run the pinned `uv audit` once without local ignore configuration and with
+   `--locked`; preserve its JSON, diagnostic output, and numeric exit status
+2. Run the official, digest-pinned OSV CLI once against the repository recursively,
+   with a read-only source mount, an explicitly empty config, and all-package JSON
+3. Validate each original report independently against the same exact-scope policy
+4. Fail on operational errors, missing/incomplete/malformed results, unknown
+   findings, unrelated packages or versions, available fixes, stale or expired
+   entries
+5. Report every accepted risk prominently, including its expiry and upstream
+   reference, and retain raw reports as the `dependency-audit-*` CI artifact
+
+uv's adverse package statuses retain their native warning behavior and remain
+visible outside the vulnerability-exception mechanism. The existing
+`UV_MALWARE_CHECK=1` enforcement during environment sync remains unchanged.
+
+There is no advisory-wide ignore flag, severity floor, second filtered scan, or
+blanket `continue-on-error` gate. Unknown scanner-format changes fail closed and
+require a tested adapter update. The official OSV CLI digest has a single owner in
+[`.github/security-scanner/Dockerfile`](.github/security-scanner/Dockerfile), which
+Dependabot maintains under the existing review and required-check policy.
+
+The offline policy contract runs in the normal `prek` gate. To reproduce both
+online scanners locally, install Docker and run:
+
+```bash
+uv sync --locked
+bash scripts/audit-dependencies.sh
+```
+
+Reports are written under `${RUNNER_TEMP:-${TMPDIR:-/tmp}}/optimizer-dependency-audit`.
+Use the raw reports to investigate a failure; never change a scanner exit code or
+weaken a required check to make an update merge.

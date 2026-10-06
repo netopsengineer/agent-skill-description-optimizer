@@ -73,7 +73,7 @@ addopts = "-q --cov --cov-report=term-missing"
 
 [tool.coverage.run]
 branch = true
-source = ["skill_optimizer", "optimize_description_v2"]
+source = ["skill_optimizer", "optimize_description_v2", "scripts"]
 
 [tool.coverage.report]
 show_missing = true

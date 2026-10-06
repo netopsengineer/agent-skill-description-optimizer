@@ -1,5 +1,5 @@
 ---
-# Dependabot configuration: three ecosystems, grouped except for uv-build.
+# Dependabot configuration: four ecosystems, grouped except for uv-build.
 # Auto-merge (dependabot-auto-merge.yml) supplies the ruleset's guarded bot approval
 # and squash-merges after Validate is green. Human-authored PRs still require human
 # approval. auto-fix.yml mechanically repairs lint-only failures.
@@ -72,4 +72,18 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    open-pull-requests-limit: 10
+
+  # The native OSV CLI container owns one immutable scanner pin. Keeping it here
+  # lets the same review, cooldown, and required-check policy maintain the scanner.
+  - package-ecosystem: "docker"
+    directory: "/.github/security-scanner"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
     open-pull-requests-limit: 10

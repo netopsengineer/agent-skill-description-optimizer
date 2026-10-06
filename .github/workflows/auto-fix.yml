@@ -73,10 +73,74 @@ jobs:
           github-token: ${{ github.token }}
           path: fixes
 
+      - name: Read the trusted PR file tree
+        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: gh api "repos/$REPO/git/trees/$HEAD_SHA?recursive=1" > trusted-tree.json
+
+      - name: Validate mechanical fix scope
+        id: scope
+        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
+        # This code comes from the trusted base workflow. Never load a checker
+        # from the PR artifact or checkout before minting a write credential.
+        shell: python
+        run: |
+          # BEGIN AUTOFIX SCOPE GUARD
+          import json
+          import os
+          from pathlib import Path
+
+          fixes = json.loads(Path("fixes/fixes.json").read_text(encoding="utf-8"))
+          tree = json.loads(Path("trusted-tree.json").read_text(encoding="utf-8"))
+          if tree.get("truncated") is not False:
+              raise ValueError("Cannot verify a partial PR file tree")
+          tracked = {
+              item["path"]: item["mode"]
+              for item in tree["tree"]
+              if item["type"] == "blob"
+          }
+          protected_files = {
+              ".github/advisory-exceptions.json",
+              ".github/osv-scanner-empty.toml",
+              "pyproject.toml",
+          }
+          protected_prefixes = (
+              ".github/workflows/",
+              ".github/security-scanner/",
+              "scripts/",
+          )
+          if not isinstance(fixes, list):
+              raise ValueError("Mechanical fixes must be a JSON array")
+          for entry in fixes:
+              if not isinstance(entry, dict):
+                  raise ValueError("Malformed mechanical fix entry")
+              path = entry.get("path")
+              if (
+                  not isinstance(path, str)
+                  or "\\" in path
+                  or any(part in {"", ".", ".."} for part in path.split("/"))
+                  or path not in tracked
+                  or entry.get("mode") != tracked[path]
+                  or entry.get("status") != "M"
+                  or entry.get("mode") not in {"100644", "100755"}
+                  or path in protected_files
+                  or path.startswith(protected_prefixes)
+              ):
+                  raise ValueError(
+                      f"Refusing auto-fix of protected, new, or noncanonical path: {path!r}. "
+                      "A maintainer must review policy and automation changes."
+                  )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write("safe=true\n")
+          # END AUTOFIX SCOPE GUARD
+
       - name: Mint a GitHub App token
         id: app-token
         # Only mint a write-capable token once we actually have fixes to push.
-        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
+        if: steps.scope.outputs.safe == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
@@ -85,7 +149,7 @@ jobs:
           permission-contents: write
 
       - name: Rebuild the fix commit via the Git Data API and update the branch
-        if: steps.guard.outputs.skip == 'false' && steps.download.outcome == 'success'
+        if: steps.scope.outputs.safe == 'true'
         env:
           # gh api authenticates as the App installation (Contents: write).
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

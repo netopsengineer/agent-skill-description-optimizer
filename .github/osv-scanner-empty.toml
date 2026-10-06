@@ -1,0 +1,3 @@
+# Raw scans never apply advisory-wide or package-wide suppression.
+# Exact temporary risk acceptances live in advisory-exceptions.json and are
+# adjudicated against complete raw results by scripts/advisory_policy.py.

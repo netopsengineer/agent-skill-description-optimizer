@@ -47,12 +47,44 @@ jobs:
       - name: Run the full prek gate
         run: uv run prek run --all-files --show-diff-on-failure --color always
 
-      - name: uv audit (advisory scan of uv.lock)
-        run: uv audit --preview-features audit
-
-      - name: OSV-Scanner (repo-wide)
-        uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc  # v2.6.0
+  # Run advisory scans in a fresh job: test/pre-commit code in full-gate must not
+  # be able to mutate the policy, adapters, or source tree used by the scanners.
+  deps-security:
+    name: deps-security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1  # v2.21.1
         with:
-          scan-args: |-
-            --recursive
-            ./
+          egress-policy: audit
+
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.11.29"
+          # gate owns the shared cache write; parallel saves race on the same key.
+          save-cache: false
+
+      - name: Sync the environment
+        env:
+          UV_MALWARE_CHECK: "1"
+        run: uv sync --locked
+
+      - name: Audit dependencies with the bounded no-fix policy
+        run: bash scripts/audit-dependencies.sh
+
+      - name: Preserve raw dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: dependency-audit-${{ github.job }}
+          path: ${{ runner.temp }}/optimizer-dependency-audit/
+          retention-days: 14
+          if-no-files-found: warn
