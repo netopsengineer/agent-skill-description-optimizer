@@ -96,7 +96,7 @@ repos:
   # single tool owns that gate (PY-PROJ-007: no overlapping tools). ruff infers the
   # upgrade target from pyproject's requires-python (>=3.14).
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: a56c0b927e6465d37cae3e97d35d4d18ab2b96cd # frozen: v0.16.9
+    rev: f12be1ebaa5351c1fc76472de98db2c3446c8253 # frozen: v0.16.10
     hooks:
       # Run the linter. Upstream types_or is [python, pyi, jupyter], which matches
       # `ruff check`'s own scope: it does not lint Python inside Markdown fences
@@ -113,7 +113,7 @@ repos:
         types_or: [python, pyi, jupyter, markdown]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: e0aeee36ac994cefd38eefca3d073fcb2154bc76 # frozen: 0.10.1
+    rev: 24412c5f73ad438a08146132ea86a9a72c8bd5ad # frozen: 0.11.0
     hooks:
       - id: pydoclint
         args: ["--config", "pyproject.toml"]
