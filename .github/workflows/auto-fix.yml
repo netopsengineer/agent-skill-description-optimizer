@@ -110,6 +110,7 @@ jobs:
           protected_prefixes = (
               ".github/workflows/",
               ".github/security-scanner/",
+              "ci/security-scanner/",
               "scripts/",
           )
           if not isinstance(fixes, list):

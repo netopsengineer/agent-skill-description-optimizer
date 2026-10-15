@@ -109,7 +109,7 @@ visible outside the vulnerability-exception mechanism. The existing
 There is no advisory-wide ignore flag, severity floor, second filtered scan, or
 blanket `continue-on-error` gate. Unknown scanner-format changes fail closed and
 require a tested adapter update. The official OSV CLI digest has a single owner in
-[`.github/security-scanner/Dockerfile`](.github/security-scanner/Dockerfile), which
+[`ci/security-scanner/Dockerfile`](ci/security-scanner/Dockerfile), which
 Dependabot maintains under the existing review and required-check policy.
 
 The offline policy contract runs in the normal `prek` gate. To reproduce both

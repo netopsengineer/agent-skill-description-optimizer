@@ -96,9 +96,8 @@ def test_end_to_end_scanner_policy(tmp_path: Path, scenario: str) -> None:
     shutil.copytree(
         ROOT / "scripts", work / "scripts", ignore=shutil.ignore_patterns("__pycache__")
     )
-    shutil.copytree(
-        ROOT / ".github/security-scanner", work / ".github/security-scanner"
-    )
+    shutil.copytree(ROOT / "ci/security-scanner", work / "ci/security-scanner")
+    (work / ".github").mkdir()
     shutil.copyfile(
         ROOT / ".github/osv-scanner-empty.toml", work / ".github/osv-scanner-empty.toml"
     )
@@ -192,9 +191,7 @@ raise SystemExit(int(os.environ["OSV_EXIT"]))
 
 
 def test_scanner_uses_the_official_digest_pinned_native_entrypoint() -> None:
-    dockerfile = (ROOT / ".github/security-scanner/Dockerfile").read_text(
-        encoding="utf-8"
-    )
+    dockerfile = (ROOT / "ci/security-scanner/Dockerfile").read_text(encoding="utf-8")
     instructions = [
         line for line in dockerfile.splitlines() if line and not line.startswith("#")
     ]
@@ -202,4 +199,19 @@ def test_scanner_uses_the_official_digest_pinned_native_entrypoint() -> None:
     assert re.fullmatch(
         r"FROM ghcr\.io/google/osv-scanner:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}",
         instructions[0],
+    )
+
+
+def test_scanner_manifest_has_one_dependabot_owned_location() -> None:
+    """Keep hosted Docker updates and the audit on the same supported manifest."""
+    assert (ROOT / "ci/security-scanner/Dockerfile").is_file()
+    assert not (ROOT / ".github/security-scanner/Dockerfile").exists()
+    config = (ROOT / ".github/dependabot.yml").read_text(encoding="utf-8")
+    docker = config.split('  - package-ecosystem: "docker"\n', 1)[1]
+    assert 'directory: "/ci/security-scanner"' in docker
+    assert 'interval: "daily"' in docker
+    assert "default-days: 7" in docker
+    audit = (ROOT / "scripts/audit-dependencies.sh").read_text(encoding="utf-8")
+    assert (
+        "docker build --pull --tag optimizer-osv-scanner ci/security-scanner" in audit
     )

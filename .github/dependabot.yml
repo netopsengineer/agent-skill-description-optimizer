@@ -77,7 +77,8 @@ updates:
   # The native OSV CLI container owns one immutable scanner pin. Keeping it here
   # lets the same review, cooldown, and required-check policy maintain the scanner.
   - package-ecosystem: "docker"
-    directory: "/.github/security-scanner"
+    # Non-Actions manifests live outside .github for hosted Dependabot updates.
+    directory: "/ci/security-scanner"
     schedule:
       interval: "daily"
     cooldown:
