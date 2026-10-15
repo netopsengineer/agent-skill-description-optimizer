@@ -26,7 +26,7 @@ fi
 
 # The Dockerfile is the single digest-pinned version owner, updated by Dependabot.
 # Build errors cannot be mistaken for a scan with accepted vulnerability findings.
-docker build --pull --tag optimizer-osv-scanner .github/security-scanner \
+docker build --pull --tag optimizer-osv-scanner ci/security-scanner \
   > "$output_dir/osv-build.log" 2>&1 || {
   cat "$output_dir/osv-build.log"
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
