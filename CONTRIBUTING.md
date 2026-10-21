@@ -21,8 +21,9 @@ so `uv sync` installs it). Install the git hooks once with `prek install -f`.
 
 - **Conventional Commits.** PRs are squash-merged, so the **PR title becomes the
   commit message** that drives releases. Use `feat:` (minor), `fix:` (patch), or a
-  non-releasing type (`ci:`, `chore:`, `docs:`, `refactor:`, `test:`). The `pr-title`
-  check enforces this.
+  type that does not itself request a bump (`ci:`, `chore:`, `docs:`, `refactor:`,
+  `test:`). Earlier unreleased changes can still trigger a release. The `pr-title`
+  check enforces the title syntax.
 - **Keep the tool code stable.** `src/skill_optimizer/**`, `optimize_description_v2.py`,
   and `tests/**` are the finished tool; change them only with intent.
 
@@ -123,3 +124,17 @@ bash scripts/audit-dependencies.sh
 Reports are written under `${RUNNER_TEMP:-${TMPDIR:-/tmp}}/optimizer-dependency-audit`.
 Use the raw reports to investigate a failure; never change a scanner exit code or
 weaken a required check to make an update merge.
+
+## Dependency changes and published artifacts
+
+Complete the [dependency release-impact check](docs/dependency-release-impact.md)
+for dependency, bootstrap and packaging PRs. Green checks on main do not prove that
+an already published source archive or wheel contains an update. Record whether a
+new distribution is needed and what the existing main-push release workflow would
+do before merging.
+
+The uv executable has one exact, Dependabot-owned requirement in the non-default
+`bootstrap` group. Its `uv.lock` entry supplies every setup-uv step and the semantic
+release build hook. Both scanners cover it, and the audit refuses to run with a
+different installed uv version. Update the requirement and lock together, without
+adding a separate workflow or hook version override.

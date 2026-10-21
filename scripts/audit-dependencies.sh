@@ -4,6 +4,11 @@ set -euo pipefail
 
 output_dir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/optimizer-dependency-audit"
 mkdir -p "$output_dir"
+# Prove that the executable being used is the exact package included in both
+# scanners' lock inventory. Missing or divergent bootstrap state fails closed.
+uv run --locked python -m scripts.bootstrap_uv --installed-version "$(uv --version)" \
+  | tee "$output_dir/bootstrap.txt"
+
 summary_args=()
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   summary_args=(--summary "$GITHUB_STEP_SUMMARY")

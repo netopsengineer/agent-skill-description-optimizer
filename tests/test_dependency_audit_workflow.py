@@ -54,7 +54,7 @@ def _fixtures(accepted: bool) -> tuple[dict[str, Any], dict[str, Any], dict[str,
     uv_report: dict[str, Any] = {
         "schema": {"version": "preview"},
         "summary": {
-            "audited_packages": 1,
+            "audited_packages": 2,
             "vulnerabilities": int(accepted),
             "adverse_statuses": 0,
         },
@@ -68,7 +68,19 @@ def _fixtures(accepted: bool) -> tuple[dict[str, Any], dict[str, Any], dict[str,
         package.update(vulnerabilities=[osv_finding], groups=[{"ids": [GHSA]}])
     osv_report = {
         "results": [
-            {"source": {"type": "lockfile", "path": "uv.lock"}, "packages": [package]}
+            {
+                "source": {"type": "lockfile", "path": "uv.lock"},
+                "packages": [
+                    package,
+                    {
+                        "package": {
+                            "name": "uv",
+                            "version": "0.13.4",
+                            "ecosystem": "PyPI",
+                        }
+                    },
+                ],
+            }
         ]
     }
     return (
@@ -88,6 +100,7 @@ def _fixtures(accepted: bool) -> tuple[dict[str, Any], dict[str, Any], dict[str,
         "uv-fixed",
         "osv-unrelated",
         "build-failure",
+        "bootstrap-mismatch",
     ],
 )
 def test_end_to_end_scanner_policy(tmp_path: Path, scenario: str) -> None:
@@ -101,8 +114,12 @@ def test_end_to_end_scanner_policy(tmp_path: Path, scenario: str) -> None:
     shutil.copyfile(
         ROOT / ".github/osv-scanner-empty.toml", work / ".github/osv-scanner-empty.toml"
     )
+    (work / "pyproject.toml").write_text(
+        '[dependency-groups]\nbootstrap=["uv==0.13.4"]\n', encoding="utf-8"
+    )
     (work / "uv.lock").write_text(
-        '[[package]]\nname="example"\nversion="1.0"\nsource={registry="https://pypi.org/simple"}\n',
+        '[[package]]\nname="example"\nversion="1.0"\nsource={registry="https://pypi.org/simple"}\n'
+        '[[package]]\nname="uv"\nversion="0.13.4"\nsource={registry="https://pypi.org/simple"}\n',
         encoding="utf-8",
     )
     accepted = scenario != "clean"
@@ -129,11 +146,14 @@ def test_end_to_end_scanner_policy(tmp_path: Path, scenario: str) -> None:
         f"#!{sys.executable}\n"
         + """import os, sys
 from pathlib import Path
+if sys.argv[1] == "--version":
+    print(os.environ.get("UV_VERSION", "uv 0.13.4"))
+    raise SystemExit(0)
 if sys.argv[1] == "audit":
     assert "--no-config" in sys.argv and "--locked" in sys.argv
     print(Path(os.environ["UV_FIXTURE"]).read_text())
     raise SystemExit(int(os.environ["UV_EXIT"]))
-os.execv(sys.executable, [sys.executable, *sys.argv[3:]])
+os.execv(sys.executable, [sys.executable, *sys.argv[sys.argv.index("python") + 1:]])
 """,
         encoding="utf-8",
     )
@@ -161,6 +181,7 @@ raise SystemExit(int(os.environ["OSV_EXIT"]))
         "PATH": f"{binaries}{os.pathsep}{os.environ['PATH']}",
         "RUNNER_TEMP": str(tmp_path),
         "GITHUB_STEP_SUMMARY": str(summary),
+        "UV_VERSION": "uv 0.11.29" if scenario == "bootstrap-mismatch" else "uv 0.13.4",
         "UV_FIXTURE": str(tmp_path / "uv.json"),
         "OSV_FIXTURE": str(tmp_path / "osv.json"),
         "UV_EXIT": "2" if scenario == "uv-operational" else str(int(accepted)),
@@ -179,6 +200,11 @@ raise SystemExit(int(os.environ["OSV_EXIT"]))
         result.stdout + result.stderr
     )
     output = tmp_path / "optimizer-dependency-audit"
+    if scenario == "bootstrap-mismatch":
+        assert "installed uv version differs" in result.stderr
+        assert not (output / "uv.json").exists()
+        assert not (output / "osv.json").exists()
+        return
     assert json.loads((output / "uv.json").read_text(encoding="utf-8")) == uv_report
     if scenario != "build-failure":
         assert (
