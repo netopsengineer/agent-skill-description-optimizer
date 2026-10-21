@@ -48,6 +48,9 @@ module-name = "skill_optimizer"
 module-root = "src"
 
 [dependency-groups]
+# Dependabot owns this exact bootstrap pin; setup-uv and semantic release read
+# the matching uv.lock entry. Keep bootstrap out of the default dev environment.
+bootstrap = ["uv==0.13.4"]
 dev = [
     "prek>=0.4.10",
     "pydoclint>=0.9.1",
@@ -169,12 +172,15 @@ extraPaths = ["src"]
 # GitHub Release. Building/publishing to PyPI is handled by a separate job in
 # .github/workflows/release.yml (uv build + gh-action-pypi-publish). The build hook
 # only keeps uv.lock synchronized with PSR's version stamp before the release commit.
-# The uv pin must match the release workflow. See CONTRIBUTING.md and AGENTS.md.
+# The bootstrap pin is owned by the group above and resolved from uv.lock.
+# See CONTRIBUTING.md and AGENTS.md.
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 build_command = """
 set -eu
-python -m pip install --disable-pip-version-check "uv==0.11.29"
+UV_REQUIREMENT="$(python -m scripts.bootstrap_uv)"
+python -m pip install --disable-pip-version-check "$UV_REQUIREMENT"
+python -m scripts.bootstrap_uv --installed-version "$(uv --version)"
 uv lock --upgrade-package "$PACKAGE_NAME"
 git add uv.lock
 """

@@ -12,7 +12,7 @@ Commit title, e.g.:
 
 - `feat: add X` (minor release)
 - `fix: correct Y` (patch release)
-- `ci:` / `chore:` / `docs:` / `refactor:` / `test:` (no release)
+- `ci:` / `chore:` / `docs:` / `refactor:` / `test:` (no bump by themselves)
 
 ## Checklist
 
@@ -20,3 +20,18 @@ Commit title, e.g.:
 - [ ] The local gate passes: `uv run prek run --all-files` (see `AGENTS.md`).
 - [ ] No changes to `src/skill_optimizer/**`, `optimize_description_v2.py`, or
       `tests/**` unless intended.
+
+## Dependency release impact
+
+For dependency, bootstrap or packaging updates, complete the
+[release-impact check](../docs/dependency-release-impact.md):
+
+- Changed dependency and advisory/fixed-version evidence:
+- Affected surface: runtime/bundled, source build, or CI/development/bootstrap:
+- Published version/tag and actual wheel/source-archive evidence compared:
+- Candidate build/install evidence:
+- Accumulated commits and read-only semantic-release decision:
+- Release decision: no distribution needed / new distribution needed / blocked:
+- If a release would be triggered by merge, approval and expected contents:
+
+For other changes, state why this section is not applicable.
