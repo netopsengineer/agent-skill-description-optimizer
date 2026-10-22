@@ -63,11 +63,17 @@ on four automation behaviors:
 - **Dependabot auto-merge** (`.github/workflows/dependabot-auto-merge.yml`) supplies the
   required approval only for a trusted Dependabot revision, then squash-merges it once
   Validate is green. If Validate fails on a bot PR with a mechanically fixable problem,
-  **auto-fix** (`.github/workflows/auto-fix.yml`) refreshes the lockfile, applies every
-  autofix hook, and pushes the result back so the checks re-run - no LLM, purely
-  mechanical.
+  **auto-fix** (`.github/workflows/auto-fix.yml`) independently derives bounded Python
+  fixes with trusted base-locked Ruff and pushes only those changes so checks re-run.
+  It never consumes PR-produced fixes or executes PR dependencies and hooks. Lockfile
+  refreshes, control files, new files, and new-tool migrations require reviewed
+  maintenance. See the [trust boundary](docs/autofix-threat-model.md).
 
-The configuration mirrors the local gate exactly, so "green locally" and "green in CI" mean
+Validate and Release also reconcile missed main-push runs daily. This handles
+GitHub-token bot merges without granting a stronger merger token; the schedules are
+eventual recovery, not an ordering dependency or replacement for required PR checks.
+
+The validation configuration mirrors the local gate exactly, so "green locally" and "green in CI" mean
 the same thing. For the agent-facing execution contract, see `AGENTS.md`.
 
 ## Temporary dependency risk acceptance
@@ -77,12 +83,11 @@ Both required dependency scanners use the same empty-by-default policy in
 escape hatch for an explicitly reviewed, short-lived **no-fix** case. Prefer a
 canonical dependency or lockfile update whenever a fixed release is available.
 Neither Dependabot nor the mechanical auto-fixer may create or extend an acceptance.
-The privileged auto-fix consumer prevents direct protected-file writes and verifies paths against the actual PR file tree
-before obtaining its write token, and refuses policy, scanner, workflow, packaging,
-new-file, symlink, or mode changes. Ordinary existing-file formatting and lockfile
-repairs remain eligible. This guard does not prove that arbitrary proposed source
-changes are mechanically generated. Both PR and weekly dependency audits run in
-a separate fresh job from tests and pre-commit hooks.
+The auto-fixer independently derives Python-only changes using trusted base code
+and configuration. It never accepts proposed PR artifact bytes, and its allowlist
+excludes all policy, scanner, workflow, hook, ownership, packaging, and lock files.
+New-file, deletion, symlink, and mode changes are not auto-fixed. Both PR and weekly
+dependency audits run in a separate fresh job from tests and pre-commit hooks.
 
 Each entry must identify one exact GHSA advisory, `PyPI` package, and version
 already in `uv.lock`, plus an exclusive UTC `expiresAt`, `reason`, `noFixReason`,
