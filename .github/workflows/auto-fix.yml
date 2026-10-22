@@ -12,12 +12,12 @@ name: Auto-fix
 # re-triggers Validate (GITHUB_TOKEN pushes would not). Human PRs are never
 # auto-mutated.
 on:
-  # zizmor: ignore[dangerous-triggers] workflow_run is required by design (react to
+  # workflow_run is required by design (react to
   # Validate FAILING and re-trigger CI after the App-token ref update); it runs in
   # the base-repo context. The PR head is referenced only as a Git Data API
   # parameter (base tree + parent) — never checked out, fetched, or executed — so
   # no untrusted code runs at elevated privilege.
-  workflow_run:
+  workflow_run:  # zizmor: ignore[dangerous-triggers]
     workflows: [Validate]
     types: [completed]
 
