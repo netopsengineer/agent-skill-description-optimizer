@@ -42,20 +42,35 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Approve the current Dependabot revision
+      - name: Approve and enable auto-merge for the current revision
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           REPO: ${{ github.repository }}
         run: |
-          jq -nc --arg commit_id "$HEAD_SHA" \
+          set -euo pipefail
+          is_current() {
+            gh api "repos/$REPO/pulls/$PR_NUMBER" | jq -e \
+              --arg head "$HEAD_SHA" --arg repo "$REPO" --arg base "$DEFAULT_BRANCH" '
+              .state == "open" and .draft == false and .merged == false and
+              .user.id == 49699333 and .head.repo.full_name == $repo and
+              .base.repo.full_name == $repo and .base.ref == $base and
+              .head.sha == $head' >/dev/null
+          }
+          if ! is_current; then
+            echo "The bot event is stale; leaving review and merge unchanged."
+            exit 0
+          fi
+          review_id=$(jq -nc --arg commit_id "$HEAD_SHA" \
             '{event: "APPROVE", commit_id: $commit_id,
               body: "Approved automatically for a trusted Dependabot revision."}' \
-            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input -
-
-      - name: Enable auto-merge (squash)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" --input - -q '.id')
+          if ! is_current; then
+            jq -nc '{message: "Head changed during automated review; refusing stale approval."}' \
+              | gh api --method PUT "repos/$REPO/pulls/$PR_NUMBER/reviews/$review_id/dismissals" --input -
+            exit 0
+          fi
+          gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_URL"
