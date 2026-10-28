@@ -47,3 +47,9 @@ PyPI gates. Tooling updates do not themselves require a package release.
 GitHub scheduling can be delayed; the half-hour cron is a recovery cadence, not a
 latency guarantee. Conflicts, missing provenance, API failures and failed required
 checks remain visible blockers rather than being bypassed.
+
+Release verification waits up to ten minutes in the same event for the exact
+current-main Validate run, so normal publication does not depend on cron delivery.
+It stops on a newer main commit, failed validation, missing permissions, malformed
+evidence, or timeout. Only pending/missing runs are polled; the existing periodic
+reconciliation remains the recovery path for missed events or unusually slow CI.
