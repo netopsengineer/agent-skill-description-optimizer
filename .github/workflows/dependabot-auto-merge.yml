@@ -74,3 +74,11 @@ jobs:
             exit 0
           fi
           gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_URL"
+
+      - name: Wake current-main verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --method POST "repos/$REPO/dispatches" \
+            -f event_type=dependency-maintenance

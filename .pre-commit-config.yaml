@@ -133,6 +133,12 @@ repos:
   # project's own uv environment.
   - repo: local
     hooks:
+      - id: dependency-workflow-tests
+        name: dependency workflow regression tests
+        language: system
+        entry: node --test .github/scripts/dependency-queue.test.mjs .github/scripts/main-verification.test.mjs .github/scripts/release-verification.test.mjs
+        pass_filenames: false
+        always_run: true
       - id: pytest
         name: pytest
         language: system

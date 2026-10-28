@@ -6,6 +6,8 @@ on:
     branches: [main]
   # Operator recovery when GitHub accepts a main push but drops its workflow dispatch.
   workflow_dispatch:
+  repository_dispatch:
+    types: [dependency-maintenance]
   # Reconcile bot merges whose GITHUB_TOKEN push cannot trigger another workflow.
   # This is eventual recovery, not an ordering dependency between workflows.
   schedule:
@@ -21,12 +23,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verification:
+    name: verification
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      ready: ${{ steps.evidence.outputs.ready }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2  # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Check out the trusted main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require successful validation of this exact main commit
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: node .github/scripts/release-verification.mjs
+
   # python-semantic-release inspects Conventional-Commit history, bumps the static
   # project.version, updates CHANGELOG.md, tags, and cuts a GitHub Release. It pushes
   # to protected main using the GitHub App token (the ruleset bypass actor); an App
   # push also re-triggers workflows, unlike GITHUB_TOKEN. PSR is idempotent, so its
   # own bump-commit push re-runs this workflow as a no-op.
   release:
+    needs: verification
+    if: needs.verification.outputs.ready == 'true'
     name: release
     runs-on: ubuntu-latest
     permissions:
@@ -54,7 +82,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
+
+      - name: Preserve semantic-release branch identity at the validated commit
+        env:
+          VERIFIED_SHA: ${{ github.sha }}
+        run: git switch -C main "$VERIFIED_SHA"
 
       - name: Python Semantic Release
         id: release
