@@ -25,6 +25,7 @@ concurrency:
 jobs:
   verification:
     name: verification
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     outputs:
