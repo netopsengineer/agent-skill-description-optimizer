@@ -40,6 +40,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - name: Verify read-only access to workflow evidence
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: gh api "repos/$REPO/actions/workflows/validate.yml/runs?per_page=1" --jq '.workflow_runs | length'
       - name: Require full verification unless this main commit already passed
         id: evidence
         env:
