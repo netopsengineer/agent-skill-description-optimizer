@@ -89,6 +89,24 @@ export function gitRunner(directory, token = '') {
     'protocol.file.allow=never', '-c', 'protocol.ext.allow=never', ...args],
   {cwd: directory, env, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120000}).trim();
 }
+export async function verifyRefresh(api, wanted, commit,
+  wait = ms => new Promise(resolve => setTimeout(resolve, ms))) {
+  // The pull-request projection can lag a successful Git push. Only the exact
+  // original head is retryable; never retry writes or accept an unrelated head.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const after = await api.get(`pulls/${wanted.number}`);
+    requireValue(eligible(after, api.repository, wanted.base) &&
+      after.number === wanted.number && after.head.ref === wanted.branch,
+    'Refreshed PR identity or eligibility changed');
+    const main = await api.get(`git/ref/heads/${wanted.base}`);
+    requireValue(main.object?.sha === wanted.main, 'Main changed during refresh verification');
+    if (after.head.sha === commit) return commit;
+    requireValue(after.head.sha === wanted.head,
+      `Refreshed head changed to ${after.head.sha}; require a fresh queue pass`);
+    if (attempt < 5) await wait(2000);
+  }
+  throw new Error('Refreshed head still reports original SHA after bounded verification');
+}
 export async function refresh(api, wanted, token, createGit = gitRunner) {
   requireValue(samePlan(wanted, await plan(api, wanted.base)), 'Queue changed before refresh');
   const directory = mkdtempSync(join(tmpdir(), 'dependency-queue-'));
@@ -108,10 +126,7 @@ export async function refresh(api, wanted, token, createGit = gitRunner) {
     // An intervening human commit is not an ancestor of this fixed two-parent
     // commit, so normal fast-forward push rejects it atomically. Never --force.
     createGit(directory, token)('push', '--porcelain', origin, `${commit}:refs/heads/${wanted.branch}`);
-    const after = await api.get(`pulls/${wanted.number}`);
-    requireValue(eligible(after, api.repository, wanted.base) && after.head.sha === commit,
-      'Refreshed head changed; require a fresh queue pass');
-    return commit;
+    return await verifyRefresh(api, wanted, commit);
   } finally {
     rmSync(directory, {recursive: true, force: true});
   }
