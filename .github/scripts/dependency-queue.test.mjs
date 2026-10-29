@@ -165,3 +165,14 @@ test('post-push verification fails immediately for races, identity changes, and 
     assert.equal(waits, 0);
   }
 });
+test('post-push verification rejects changes arising during a projection wait', async () => {
+  for (const mode of ['third', 'main']) {
+    const {api, current} = fixture(); const get = api.get; let waits = 0;
+    await assert.rejects(() => verifyRefresh(api, wanted, d, async () => {
+      waits++;
+      if (mode === 'third') current.head.sha = c;
+      else api.get = async path => path.startsWith('git/ref/') ? {object: {sha: c}} : get(path);
+    }), mode === 'third' ? /head changed/ : /Main changed/);
+    assert.equal(waits, 1);
+  }
+});
