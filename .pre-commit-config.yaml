@@ -113,7 +113,7 @@ repos:
         types_or: [python, pyi, jupyter, markdown]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: 871751487edc82248bd8ffdaef1aa0f09968102f # frozen: 0.11.1
+    rev: 23559aa13b43576987f1bcdf28c533f74fd30c56 # frozen: 0.12.0
     hooks:
       - id: pydoclint
         args: ["--config", "pyproject.toml"]
